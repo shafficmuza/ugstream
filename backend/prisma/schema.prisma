@@ -15,13 +15,20 @@ model AppSettings {
   // Singleton row — always id=1. Enforced in the service layer (upsert on
   // a fixed id), not via a DB constraint, since Prisma has no clean way to
   // express "at most one row" beyond that.
-  id           Int      @id @default(1)
-  appName      String   @default("ugstream")
-  logoUrl      String?
-  tagline      String?
-  supportEmail String?  @map("support_email")
-  supportPhone String?  @map("support_phone")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                Int      @id @default(1)
+  appName           String   @default("ugstream")
+  logoUrl           String?
+  tagline           String?
+  supportEmail      String?  @map("support_email")
+  supportPhone      String?  @map("support_phone")
+  // Swappable background art — admin-uploaded, no redeploy needed to
+  // change the "feel" of the site. Separate fields since the login page
+  // is a small centered form (wants a moodier, less busy image) while the
+  // homepage hero is wide — same image works for both if that's all an
+  // admin wants to manage, but doesn't have to be.
+  heroBackgroundUrl String?  @map("hero_background_url")
+  authBackgroundUrl String?  @map("auth_background_url")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
 }

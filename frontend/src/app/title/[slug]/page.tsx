@@ -31,14 +31,12 @@ export default async function TitlePage({ params }: { params: { slug: string } }
   return (
     <main>
       <div
+        className="title-banner"
         style={{
           backgroundImage: `linear-gradient(to bottom, rgba(11,11,15,0.2), #0b0b0f), url(${title.bannerUrl ?? title.posterUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          padding: '120px 32px 32px',
         }}
       >
-        <h1 style={{ fontSize: 32, margin: '0 0 8px' }}>{title.name}</h1>
+        <h1 style={{ margin: '0 0 8px' }}>{title.name}</h1>
         <p style={{ opacity: 0.7, fontSize: 14 }}>
           {title.releaseYear} · {title.genres.join(', ')}
         </p>

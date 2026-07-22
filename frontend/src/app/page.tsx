@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { fetchSettings } from '@/lib/settings';
 
 interface TitleCard {
   id: string;
@@ -25,8 +26,19 @@ export default async function HomePage() {
     rails = [];
   }
 
+  const settings = await fetchSettings();
+
   return (
     <main>
+      {settings.heroBackgroundUrl && (
+        <div
+          className="hero"
+          style={{ backgroundImage: `linear-gradient(to bottom, rgba(11,11,15,0.15), #0b0b0f), url(${settings.heroBackgroundUrl})` }}
+        >
+          {settings.tagline && <p className="hero-tagline">{settings.tagline}</p>}
+        </div>
+      )}
+
       {rails.length === 0 && (
         <p style={{ padding: '0 32px', opacity: 0.7 }}>
           No content published yet — add titles via the admin API.

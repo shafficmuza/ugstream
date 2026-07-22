@@ -67,6 +67,7 @@ export default function AdminGenresPage() {
       </div>
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -91,6 +92,7 @@ export default function AdminGenresPage() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

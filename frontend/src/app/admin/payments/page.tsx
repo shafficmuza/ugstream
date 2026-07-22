@@ -37,6 +37,7 @@ export default function AdminPaymentsPage() {
   return (
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Payments</h1>
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -66,6 +67,7 @@ export default function AdminPaymentsPage() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -33,36 +33,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 61px)' }}>
-      <nav
-        style={{
-          width: 180,
-          flexShrink: 0,
-          borderRight: '1px solid #222',
-          padding: '20px 0',
-        }}
-      >
+    <div className="admin-shell">
+      <nav className="admin-nav">
         {NAV.map((item) => {
           const active = item.href === '/admin' ? pathname === '/admin' : pathname?.startsWith(item.href);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: 'block',
-                padding: '10px 20px',
-                fontSize: 14,
-                background: active ? '#1c1c22' : 'transparent',
-                borderLeft: active ? '3px solid #e6363f' : '3px solid transparent',
-                opacity: active ? 1 : 0.75,
-              }}
-            >
+            <Link key={item.href} href={item.href} className={active ? 'admin-nav-link active' : 'admin-nav-link'}>
               {item.label}
             </Link>
           );
         })}
       </nav>
-      <div style={{ flex: 1, padding: '30px 40px' }}>{children}</div>
+      <div className="admin-content">{children}</div>
     </div>
   );
 }

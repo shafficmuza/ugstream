@@ -23,6 +23,7 @@ async function bootstrap() {
   // multer's diskStorage doesn't create its destination directory itself.
   fs.mkdirSync(path.join(process.cwd(), 'uploads', 'logos'), { recursive: true });
   fs.mkdirSync(path.join(process.cwd(), 'uploads', 'images'), { recursive: true });
+  fs.mkdirSync(path.join(process.cwd(), 'uploads', 'backgrounds'), { recursive: true });
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
   app.use(

@@ -56,6 +56,7 @@ export default function AdminTitlesPage() {
         </Link>
       </div>
 
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -100,6 +101,7 @@ export default function AdminTitlesPage() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

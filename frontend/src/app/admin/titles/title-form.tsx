@@ -124,16 +124,16 @@ export function TitleForm({
         onChange={(e) => set('description', e.target.value)}
       />
 
-      <div style={{ display: 'flex', gap: 16 }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
           <label style={labelStyle}>Language</label>
           <input style={inputStyle} value={value.language} onChange={(e) => set('language', e.target.value)} />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
           <label style={labelStyle}>VJ name (optional)</label>
           <input style={inputStyle} value={value.vjName} onChange={(e) => set('vjName', e.target.value)} />
         </div>
-        <div style={{ width: 100 }}>
+        <div style={{ width: 100, flexGrow: 1 }}>
           <label style={labelStyle}>Year</label>
           <input style={inputStyle} value={value.releaseYear} onChange={(e) => set('releaseYear', e.target.value)} />
         </div>
@@ -158,8 +158,8 @@ export function TitleForm({
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 16 }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
           <label style={labelStyle}>Poster</label>
           {value.posterUrl && <img src={value.posterUrl} alt="" style={{ height: 90, display: 'block', marginBottom: 8 }} />}
           <input
@@ -169,7 +169,7 @@ export function TitleForm({
             onChange={(e) => e.target.files?.[0] && handlePosterUpload(e.target.files[0])}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
           <label style={labelStyle}>Banner</label>
           {value.bannerUrl && <img src={value.bannerUrl} alt="" style={{ height: 90, display: 'block', marginBottom: 8 }} />}
           <input
@@ -192,12 +192,12 @@ export function TitleForm({
       </select>
 
       {(value.access === 'purchase' || value.access === 'sub_or_purchase') && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
             <label style={labelStyle}>Price (UGX)</label>
             <input style={inputStyle} value={value.priceUgx} onChange={(e) => set('priceUgx', e.target.value)} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
             <label style={labelStyle}>Rental window (hours)</label>
             <input style={inputStyle} value={value.rentalHours} onChange={(e) => set('rentalHours', e.target.value)} />
           </div>

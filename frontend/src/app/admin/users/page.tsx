@@ -53,6 +53,7 @@ export default function AdminUsersPage() {
   return (
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Users</h1>
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -99,6 +100,7 @@ export default function AdminUsersPage() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

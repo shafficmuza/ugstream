@@ -182,7 +182,7 @@ function EpisodesSection({
       </div>
 
       {adding && (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
           {kind === 'series' && (
             <>
               <div>
@@ -195,7 +195,7 @@ function EpisodesSection({
               </div>
             </>
           )}
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
             <label style={labelStyle}>Name (optional)</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
@@ -207,6 +207,7 @@ function EpisodesSection({
 
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -248,6 +249,7 @@ function EpisodesSection({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,8 @@ export interface UpdateSettingsInput {
   tagline?: string;
   supportEmail?: string;
   supportPhone?: string;
+  heroBackgroundUrl?: string;
+  authBackgroundUrl?: string;
 }
 
 @Injectable()

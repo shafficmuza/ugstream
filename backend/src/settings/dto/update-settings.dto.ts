@@ -15,4 +15,10 @@ export class UpdateSettingsDto {
 
   @IsOptional() @IsString() @MaxLength(20)
   supportPhone?: string;
+
+  @IsOptional() @IsString()
+  heroBackgroundUrl?: string;
+
+  @IsOptional() @IsString()
+  authBackgroundUrl?: string;
 }

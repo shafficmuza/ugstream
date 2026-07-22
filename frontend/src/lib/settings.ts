@@ -6,6 +6,8 @@ export interface AppSettings {
   tagline: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
+  heroBackgroundUrl: string | null;
+  authBackgroundUrl: string | null;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -14,6 +16,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   tagline: null,
   supportEmail: null,
   supportPhone: null,
+  heroBackgroundUrl: null,
+  authBackgroundUrl: null,
 };
 
 export async function fetchSettings(): Promise<AppSettings> {

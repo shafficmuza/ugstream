@@ -60,8 +60,8 @@ export default function AdminPlansPage() {
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Subscription plans</h1>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 500, marginBottom: 24 }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 500, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 140 }}>
           <label style={labelStyle}>Name</label>
           <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </div>
@@ -79,6 +79,7 @@ export default function AdminPlansPage() {
       </div>
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
+      <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
@@ -103,6 +104,7 @@ export default function AdminPlansPage() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
