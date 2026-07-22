@@ -1,17 +1,27 @@
 # ugstream
 
+![Status](https://img.shields.io/badge/status-live-brightgreen)
+![NestJS](https://img.shields.io/badge/backend-NestJS-e0234e?logo=nestjs&logoColor=white)
+![Next.js](https://img.shields.io/badge/frontend-Next.js-black?logo=next.js&logoColor=white)
+![Prisma](https://img.shields.io/badge/ORM-Prisma-2d3748?logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169e1?logo=postgresql&logoColor=white)
+![TypeScript](https://img.shields.io/badge/lang-TypeScript-3178c6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/license-private-lightgrey)
+
 Ugandan movies & series streaming platform. **Live at
 https://ham.sentepos.com** (deployed 2026-07-21 on 95.111.232.148). See
-`/root/streaming-app-plan.md` and `/root/streaming-app-schema.md` for the
+[`docs/streaming-app-plan.md`](docs/streaming-app-plan.md) and
+[`docs/streaming-app-schema.md`](docs/streaming-app-schema.md) for the
 full business/architecture writeup this was built from, and
-`deploy/README.md` for exactly how it's running in production, including
-real bugs hit and fixed along the way.
+[`deploy/README.md`](deploy/README.md) for exactly how it's running in
+production, including real bugs hit and fixed along the way.
 
 **Stack:** NestJS + Prisma + Postgres (backend), Next.js (frontend),
-Cloudflare Stream (video), Flutterwave (MTN MoMo / Airtel Money / card
-payments). Backend and frontend run natively via **PM2** (not Docker —
-image rebuilds were too slow for active development); Postgres stays in
-a Docker container since it rarely changes.
+Cloudflare Stream (video). Payments: Stripe (live, card), MTN MoMo
+(sandbox, Mobile Money), Flutterwave (configured, hidden from the UI for
+now). Backend and frontend run natively via **PM2** (not Docker — image
+rebuilds were too slow for active development); Postgres stays in a
+Docker container since it rarely changes.
 
 ## Structure
 ```
