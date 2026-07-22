@@ -124,6 +124,22 @@ overhead. Postgres stays in Docker because it almost never needs a rebuild.
     rather than getting rejected, plus confirming a bad signature is
     still correctly rejected.
 
+11. **Cloudflare's `ready` webhook silently missed events** — an episode
+    (Elephants Dream) finished transcoding on Cloudflare's side (confirmed
+    `readyToStream: true`, 654s duration) but our webhook never fired, so
+    the episode sat `cfStatus: 'uploading'` indefinitely even though it was
+    actually playable. Same class of bug as #10, just for episodes instead
+    of payments. Fixed with the same self-heal pattern: added
+    `CloudflareStreamService.getVideoStatus()` to ask Cloudflare directly,
+    and `EpisodesService.syncStatus()` to call it whenever an episode is
+    still `uploading`/`pending` — wired into both the playback path
+    (`play()`) and the admin title-detail endpoint, so status corrects
+    itself the next time anyone looks at the episode (no-op, one extra
+    Cloudflare API call, for episodes already `ready`/`error`). Verified by
+    forcing episode id=5 back to `cf_status='uploading'` in the DB and
+    confirming `GET /admin/titles/9` returned it to `ready` with the
+    correct duration/thumbnail.
+
 ## Payments: three providers now
 - **Flutterwave** — MTN/Airtel Mobile Money + card, native UGX.
   **Hidden from the UI for now** (button removed from `/account/subscribe`,

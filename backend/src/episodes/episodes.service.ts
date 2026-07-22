@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { Episode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
@@ -12,8 +13,9 @@ export class EpisodesService {
   ) {}
 
   async play(userId: bigint, episodeId: bigint) {
-    const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
+    let episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
+    episode = await this.syncStatus(episode);
     if (episode.cfStatus !== 'ready' || !episode.cfVideoUid) {
       throw new NotFoundException('Video is not ready for playback yet.');
     }
@@ -117,6 +119,31 @@ export class EpisodesService {
       data: { cfVideoUid: videoUid, cfStatus: 'uploading' },
     });
     return { uploadUrl };
+  }
+
+  /**
+   * Checks directly with Cloudflare when an episode is still `uploading`/
+   * `pending` rather than trusting the ready/error webhook alone ever
+   * arrived — see the 2026-07-22 incident note on
+   * CloudflareStreamService.getVideoStatus. No-ops (one extra Cloudflare
+   * API call) for episodes already `ready` or `error`, so it's cheap to
+   * call unconditionally on any read path that shows episode status.
+   */
+  async syncStatus(episode: Episode): Promise<Episode> {
+    if (episode.cfStatus === 'ready' || episode.cfStatus === 'error' || !episode.cfVideoUid) {
+      return episode;
+    }
+
+    const status = await this.stream.getVideoStatus(episode.cfVideoUid).catch(() => null);
+    if (status?.ready) {
+      await this.markReady(episode.cfVideoUid, status.durationSecs, status.thumbnailUrl);
+    } else if (status?.errored) {
+      await this.markError(episode.cfVideoUid);
+    } else {
+      return episode; // still genuinely pending, or the Cloudflare check itself failed
+    }
+
+    return this.prisma.episode.findUniqueOrThrow({ where: { id: episode.id } });
   }
 
   async markReady(videoUid: string, durationSecs: number, thumbnailUrl: string) {

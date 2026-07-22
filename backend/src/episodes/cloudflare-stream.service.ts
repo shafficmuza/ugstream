@@ -87,4 +87,33 @@ export class CloudflareStreamService {
   hlsUrl(videoUid: string, token: string): string {
     return `https://customer-${this.config.get('CLOUDFLARE_CUSTOMER_CODE')}.cloudflarestream.com/${token}/manifest/video.m3u8`;
   }
+
+  /**
+   * Direct status check, independent of the "ready"/"error" webhook — one
+   * video (2026-07-22, Elephants Dream) finished transcoding on
+   * Cloudflare's side but the webhook never fired, so our own record sat
+   * `uploading` indefinitely even though it was actually playable. Lets
+   * EpisodesService self-heal on read (admin viewing the title, or a user
+   * hitting play) rather than depending on the webhook alone ever arriving
+   * — same pattern as the Stripe/MoMo payment self-heal.
+   */
+  async getVideoStatus(
+    videoUid: string,
+  ): Promise<{ ready: boolean; errored: boolean; durationSecs: number; thumbnailUrl: string }> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}`,
+      { headers: { Authorization: `Bearer ${this.apiToken}` } },
+    );
+    const json = await res.json();
+    if (!json.success) {
+      throw new InternalServerErrorException(`Cloudflare video lookup failed: ${JSON.stringify(json.errors)}`);
+    }
+    const result = json.result;
+    return {
+      ready: result.readyToStream === true || result.status?.state === 'ready',
+      errored: result.status?.state === 'error',
+      durationSecs: Math.round(result.duration ?? 0),
+      thumbnailUrl: result.thumbnail ?? '',
+    };
+  }
 }

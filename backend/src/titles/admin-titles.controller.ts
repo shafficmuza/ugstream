@@ -3,11 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { UpsertTitleDto } from './dto/upsert-title.dto';
+import { EpisodesService } from '../episodes/episodes.service';
 
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/titles')
 export class AdminTitlesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly episodes: EpisodesService,
+  ) {}
 
   @Get()
   async list() {
@@ -32,12 +36,19 @@ export class AdminTitlesController {
         genres: { include: { genre: true } },
       },
     });
+
+    // Self-heal any episode still 'uploading'/'pending' — the admin
+    // checking on a title's upload progress is exactly the moment a
+    // stuck-but-actually-ready status (missed webhook) would otherwise go
+    // unnoticed. See EpisodesService.syncStatus.
+    const episodes = await Promise.all(title.episodes.map((e) => this.episodes.syncStatus(e)));
+
     return {
       ...title,
       id: title.id.toString(),
       genreIds: title.genres.map((g) => g.genreId),
       genres: title.genres.map((g) => g.genre),
-      episodes: title.episodes.map((e) => ({
+      episodes: episodes.map((e) => ({
         ...e,
         id: e.id.toString(),
         titleId: e.titleId.toString(),
