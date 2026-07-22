@@ -1,0 +1,205 @@
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { SmsService } from './sms.service';
+
+const OTP_TTL_MINUTES = 5;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_REQUESTS_PER_HOUR = 3;
+const MAX_ACTIVE_SESSIONS = 3;
+const ACCESS_TOKEN_TTL = '15m';
+const REFRESH_TOKEN_TTL_DAYS = 30;
+
+function randomOtp(): string {
+  // 6-digit numeric code, zero-padded.
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+function randomToken(): string {
+  return crypto.randomBytes(48).toString('hex');
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+    private readonly sms: SmsService,
+  ) {}
+
+  async requestOtp(phone: string): Promise<{ expiresInSeconds: number }> {
+    const since = new Date(Date.now() - 60 * 60 * 1000);
+    const recentCount = await this.prisma.otpCode.count({
+      where: { phone, expiresAt: { gt: since } },
+    });
+    if (recentCount >= OTP_REQUESTS_PER_HOUR) {
+      throw new BadRequestException(
+        'Too many codes requested for this number. Try again later.',
+      );
+    }
+
+    // TEMPORARY: no reliable SMS provider is wired up yet, so every phone
+    // number is issued this fixed code instead of a real one. This is a
+    // real account-takeover risk (anyone who knows a phone number can log
+    // in as that user) — set OTP_STATIC_CODE="" in .env the moment a real
+    // SMS provider is wired in (see sms.service.ts) to go back to random,
+    // per-request codes.
+    const staticCode = this.config.get<string>('OTP_STATIC_CODE');
+    const code = staticCode || randomOtp();
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+    await this.prisma.otpCode.create({
+      data: { phone, codeHash, expiresAt },
+    });
+
+    if (!staticCode) {
+      await this.sms.send(phone, `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`);
+    }
+
+    return { expiresInSeconds: OTP_TTL_MINUTES * 60 };
+  }
+
+  async verifyOtp(phone: string, code: string, deviceLabel?: string) {
+    const otp = await this.prisma.otpCode.findFirst({
+      where: { phone, consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { id: 'desc' },
+    });
+
+    if (!otp) {
+      throw new UnauthorizedException('Code expired or not found. Request a new one.');
+    }
+    if (otp.attempts >= OTP_MAX_ATTEMPTS) {
+      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
+    }
+
+    const valid = await bcrypt.compare(code, otp.codeHash);
+    if (!valid) {
+      await this.prisma.otpCode.update({
+        where: { id: otp.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Incorrect code.');
+    }
+
+    await this.prisma.otpCode.update({
+      where: { id: otp.id },
+      data: { consumedAt: new Date() },
+    });
+
+    const user = await this.prisma.user.upsert({
+      where: { phone },
+      update: {},
+      create: { phone },
+    });
+
+    if (user.status === 'banned') {
+      throw new UnauthorizedException('This account has been suspended.');
+    }
+
+    return this.issueSession(user.id, deviceLabel);
+  }
+
+  async refresh(refreshToken: string) {
+    const candidates = await this.prisma.session.findMany({
+      where: { revokedAt: null },
+      include: { user: true },
+    });
+
+    // Refresh tokens are stored hashed, so we must compare against each
+    // active session rather than looking one up directly. Fine at MVP
+    // scale; revisit (e.g. store a lookup prefix) if session volume grows.
+    for (const session of candidates) {
+      if (await bcrypt.compare(refreshToken, session.refreshHash)) {
+        if (session.user.status === 'banned') {
+          throw new UnauthorizedException('This account has been suspended.');
+        }
+        await this.prisma.session.update({
+          where: { id: session.id },
+          data: { lastSeenAt: new Date() },
+        });
+        return this.issueTokenPair(session.user.id, session.id);
+      }
+    }
+
+    throw new UnauthorizedException('Invalid or expired refresh token.');
+  }
+
+  async logout(sessionId: string) {
+    await this.prisma.session.updateMany({
+      where: { id: sessionId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  private async issueSession(userId: bigint, deviceLabel?: string) {
+    const activeSessions = await this.prisma.session.findMany({
+      where: { userId, revokedAt: null },
+      orderBy: { lastSeenAt: 'asc' },
+    });
+
+    // Enforce a device cap by evicting the oldest session(s) rather than
+    // blocking new logins outright.
+    if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+      const toRevoke = activeSessions.slice(
+        0,
+        activeSessions.length - MAX_ACTIVE_SESSIONS + 1,
+      );
+      await this.prisma.session.updateMany({
+        where: { id: { in: toRevoke.map((s) => s.id) } },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    const refreshToken = randomToken();
+    const refreshHash = await bcrypt.hash(refreshToken, 10);
+    const session = await this.prisma.session.create({
+      data: { userId, refreshHash, deviceLabel },
+    });
+
+    const tokens = await this.issueTokenPair(userId, session.id, refreshToken);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    return { ...tokens, user: this.toPublicUser(user) };
+  }
+
+  private async issueTokenPair(userId: bigint, sessionId: string, existingRefreshToken?: string) {
+    const accessToken = await this.jwt.signAsync(
+      { sub: userId.toString(), sid: sessionId },
+      { expiresIn: ACCESS_TOKEN_TTL, secret: this.config.get('JWT_ACCESS_SECRET') },
+    );
+
+    let refreshToken = existingRefreshToken;
+    if (!refreshToken) {
+      // Rotate the refresh token on every use.
+      refreshToken = randomToken();
+      const refreshHash = await bcrypt.hash(refreshToken, 10);
+      await this.prisma.session.update({
+        where: { id: sessionId },
+        data: { refreshHash },
+      });
+    }
+
+    return {
+      accessToken,
+      refreshToken,
+      refreshTokenExpiresInDays: REFRESH_TOKEN_TTL_DAYS,
+    };
+  }
+
+  private toPublicUser(user: { id: bigint; phone: string; displayName: string | null; role: string }) {
+    return {
+      id: user.id.toString(),
+      phone: user.phone,
+      displayName: user.displayName,
+      role: user.role,
+    };
+  }
+}

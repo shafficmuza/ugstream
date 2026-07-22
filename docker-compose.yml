@@ -1,0 +1,21 @@
+services:
+  # Postgres stays containerized — stable, rarely changes, no rebuild
+  # friction. Backend and frontend run natively via PM2 (see
+  # ecosystem.config.js and deploy/README.md) — Docker image rebuilds were
+  # taking minutes per change and added no real benefit for code that
+  # changes multiple times a day.
+  postgres:
+    image: postgres:16-alpine
+    container_name: ugs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ugstream_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ugstream_db
+    volumes:
+      - ugs_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"   # 5432/5433 already used by other projects on this host
+
+volumes:
+  ugs_postgres_data:

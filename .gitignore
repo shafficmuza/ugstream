@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+
+# Runtime-uploaded content (posters, logos) — not source, regenerable via
+# the admin UI. Keep the directories themselves via .gitkeep.
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/*/.gitkeep
