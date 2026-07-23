@@ -199,19 +199,33 @@ you'll get an explicit "Cloudflare Stream not enabled" error until then).
 Cloudflare's own token-issuing endpoint now, not a locally-held key.
 
 ## Seeded content
-4 real, legally-clear titles (public domain films + Creative Commons
+Real, legally-clear titles only (public domain films + Creative Commons
 shorts — not fictional placeholders, and not pirated commercial content):
 - **Big Buck Bunny** (2008, CC-BY, free) — Blender Foundation short
 - **Sintel** (2010, CC-BY, free) — Blender Foundation short
+- **Elephants Dream** (2006, CC-BY, free) — Blender Foundation short
+- **Tears of Steel** (2012, CC-BY, free) — Blender Foundation short
 - **Night of the Living Dead** (1968, public domain, subscription-gated)
 - **His Girl Friday** (1940, public domain, purchase-gated, UGX 1,500)
+- **The Cabinet of Dr. Caligari** (1920, public domain, subscription-gated)
+- **Nosferatu** (1922, public domain, sub-or-purchase-gated)
+- **Caminandes 1: Llama Drama** (2013, CC-BY, free, genre Kids) — Blender Foundation short
+- **Caminandes 2: Gran Dillama** (2013, CC-BY, free, genre Kids) — Blender Foundation short
+- **Caminandes 3: Llamigos** (2016, CC-BY, free, genre Kids) — Blender Foundation short
 
-All four have real video fully uploaded, transcoded, and verified
-playable through the app's actual entitlement-gated playback endpoint.
-Sourced from archive.org / the Blender Foundation; posters are
-archive.org's own thumbnails, copied into `backend/uploads/images/` so
-the app doesn't depend on archive.org staying up. Manage via
-`/v1/admin/titles` or the admin UI at `/admin/titles`.
+All titles above have real video fully uploaded, transcoded, and
+verified playable through the app's actual entitlement-gated playback
+endpoint. Sourced from archive.org / the Blender Foundation; posters
+are either archive.org thumbnails or (for the Caminandes trilogy) a
+1080p frame pulled from the source video with `ffmpeg -ss <t> -frames:v 1`
+for a sharper result — copied into `backend/uploads/images/` so the app
+doesn't depend on archive.org staying up. Manage via `/v1/admin/titles`
+or the admin UI at `/admin/titles`.
+
+A separate title, **"Humpty Dumpty Grocery Store | CoComelon Nursery
+Rhymes & Kids Songs"** (id 13), was added directly by the site owner —
+note this is commercial CoComelon content, not public-domain/CC, kept
+live at the owner's explicit direction (acknowledged risk).
 
 Large files (>~200MB) hit Cloudflare's direct-upload size limit — use
 `POST /accounts/{id}/stream/copy` with a source URL instead of the app's
