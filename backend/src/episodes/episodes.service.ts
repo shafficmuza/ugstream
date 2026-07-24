@@ -42,9 +42,12 @@ export class EpisodesService {
       );
     }
 
-    const history = await this.prisma.watchHistory.findUnique({
-      where: { userId_episodeId: { userId, episodeId } },
-    });
+    const [history, title] = await Promise.all([
+      this.prisma.watchHistory.findUnique({
+        where: { userId_episodeId: { userId, episodeId } },
+      }),
+      this.prisma.title.findUniqueOrThrow({ where: { id: episode.titleId } }),
+    ]);
 
     const token = await this.stream.signPlaybackToken(episode.cfVideoUid);
 
@@ -52,6 +55,9 @@ export class EpisodesService {
       playbackUrl: this.stream.hlsUrl(episode.cfVideoUid, token),
       expiresIn: 3600,
       resumeAt: history?.positionSecs ?? 0,
+      // Metadata for the /watch page chrome (back-arrow target + overlay).
+      title: { name: title.name, slug: title.slug, kind: title.kind },
+      episode: { season: episode.season, number: episode.number, name: episode.name },
     };
   }
 

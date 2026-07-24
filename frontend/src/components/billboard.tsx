@@ -10,6 +10,7 @@ export interface BillboardData {
   posterUrl: string | null;
   access: string;
   releaseYear?: number | null;
+  firstEpisodeId?: string | null;
 }
 
 export function Billboard({ data, fallbackArt }: { data: BillboardData; fallbackArt?: string | null }) {
@@ -28,7 +29,10 @@ export function Billboard({ data, fallbackArt }: { data: BillboardData; fallback
         </div>
         {data.description && <p className="billboard-desc">{data.description}</p>}
         <div className="billboard-actions">
-          <Link href={`/title/${data.slug}?play=1`} className="btn-play">
+          <Link
+            href={data.firstEpisodeId ? `/watch/${data.firstEpisodeId}` : `/title/${data.slug}?play=1`}
+            className="btn-play"
+          >
             <span aria-hidden>▶</span> Play
           </Link>
           <Link href={`/title/${data.slug}`} className="btn-more">

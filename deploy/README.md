@@ -199,6 +199,22 @@ The public site was rebuilt to a Netflix-style design system
 - **Browse pages**: `/movies`, `/series`, `/kids` (genre=kids), `/search`.
 - Rails have hover arrow paging on desktop, native swipe on mobile
   (`components/rail.tsx`).
+- **Full-page watch experience** (`/watch/:episodeId`, Netflix-style URL):
+  the whole viewport is the player, with a back arrow + title chrome that
+  fades after 3s and returns on mouse move/pause. Handles 402 → subscribe
+  redirect, 401/no-token → login. The old inline half-width player
+  (`title/[slug]/video-player.tsx` + `play-button.tsx`) is deleted — every
+  Play action (billboard, title page, episode rows, card quick-play,
+  continue-watching) navigates to `/watch/…`. `/title/slug?play=1` links
+  server-redirect to `/watch`. Auto-fullscreen + landscape lock now
+  applies **only on touch devices** (`pointer: coarse`) — on desktop the
+  watch page itself is the wide player.
+- **Card hover quick-play**: title cards expose `firstEpisodeId` (first
+  ready episode, included via `TitlesService.cardEpisodeInclude` across
+  home/browse/similar/my-list) and show a round ▶ button on hover that
+  deep-links to `/watch/:id`; hover zoom is delayed 0.35s (Netflix-style
+  intent delay). Play responses now include title/episode metadata for the
+  watch-page chrome.
 
 ## Temporary: OTP bypass (no SMS provider yet)
 `OTP_STATIC_CODE="1234"` in `backend/.env` means **every** phone number

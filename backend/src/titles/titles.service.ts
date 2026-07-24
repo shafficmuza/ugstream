@@ -30,22 +30,13 @@ export class TitlesService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * perPage,
         take: perPage,
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          kind: true,
-          posterUrl: true,
-          access: true,
-          priceUgx: true,
-          releaseYear: true,
-        },
+        include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.title.count({ where }),
     ]);
 
     return {
-      items: items.map((t) => ({ ...t, id: t.id.toString() })),
+      items: items.map((t) => this.toCard(t)),
       page,
       perPage,
       total,
@@ -75,6 +66,18 @@ export class TitlesService {
     };
   }
 
+  /** Include fragment giving each title its first playable episode, so
+   *  cards can deep-link straight to /watch/:episodeId (Netflix-style)
+   *  without a second request. */
+  static readonly cardEpisodeInclude = {
+    episodes: {
+      where: { cfStatus: 'ready' as const },
+      orderBy: [{ season: 'asc' as const }, { number: 'asc' as const }],
+      take: 1,
+      select: { id: true },
+    },
+  };
+
   private toCard(t: any) {
     return {
       id: t.id.toString(),
@@ -85,6 +88,7 @@ export class TitlesService {
       access: t.access,
       priceUgx: t.priceUgx,
       releaseYear: t.releaseYear,
+      firstEpisodeId: t.episodes?.[0]?.id?.toString() ?? null,
     };
   }
 
@@ -94,16 +98,19 @@ export class TitlesService {
         where: { published: true },
         orderBy: { createdAt: 'desc' },
         take: 12,
+        include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.title.findMany({
         where: { published: true, kind: 'movie' },
         orderBy: { createdAt: 'desc' },
         take: 12,
+        include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.title.findMany({
         where: { published: true, kind: 'series' },
         orderBy: { createdAt: 'desc' },
         take: 12,
+        include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.genre.findMany({
         where: { titles: { some: { title: { published: true } } } },
@@ -143,6 +150,7 @@ export class TitlesService {
             where: { published: true, genres: { some: { genreId: g.id } } },
             orderBy: { createdAt: 'desc' },
             take: 12,
+            include: TitlesService.cardEpisodeInclude,
           })
         ).map((t) => this.toCard(t)),
       })),
@@ -151,7 +159,10 @@ export class TitlesService {
     let top10: any[] = [];
     if (topTitleIds.length > 0) {
       const ids = topTitleIds.map((r) => r.title_id);
-      const rows = await this.prisma.title.findMany({ where: { id: { in: ids } } });
+      const rows = await this.prisma.title.findMany({
+        where: { id: { in: ids } },
+        include: TitlesService.cardEpisodeInclude,
+      });
       const byId = new Map(rows.map((t) => [t.id.toString(), t]));
       top10 = ids
         .map((id) => byId.get(id.toString()))
@@ -188,6 +199,7 @@ export class TitlesService {
       },
       orderBy: { createdAt: 'desc' },
       take: 12,
+      include: TitlesService.cardEpisodeInclude,
     });
     return rows.map((t) => this.toCard(t));
   }

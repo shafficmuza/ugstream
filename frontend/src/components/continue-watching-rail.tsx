@@ -43,7 +43,7 @@ export function ContinueWatchingRail() {
       {items.map((item) => (
         <Link
           key={item.episodeId}
-          href={`/title/${item.title.slug}?play=1`}
+          href={`/watch/${item.episodeId}`}
           className="card"
           title={item.title.name}
         >

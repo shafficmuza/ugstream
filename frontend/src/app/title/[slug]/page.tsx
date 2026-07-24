@@ -1,5 +1,6 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
-import { PlayButton } from './play-button';
 import { MyListButton } from '@/components/my-list-button';
 import { PosterGrid } from '@/components/poster-grid';
 import { TitleCardData } from '@/components/title-card';
@@ -68,7 +69,12 @@ export default async function TitlePage({
   const art = title.bannerUrl ?? title.posterUrl;
   const firstPlayable = title.episodes.find((e) => e.cfStatus === 'ready');
   const movieDuration = title.kind === 'movie' ? formatDuration(title.episodes[0]?.durationSecs ?? null) : null;
-  const autoPlay = searchParams.play === '1';
+
+  // Deep links like /title/slug?play=1 (billboard Play, older bookmarks)
+  // go straight to the full-page player.
+  if (searchParams.play === '1' && firstPlayable) {
+    redirect(`/watch/${firstPlayable.id}`);
+  }
 
   return (
     <main>
@@ -93,7 +99,9 @@ export default async function TitlePage({
 
           <div className="billboard-actions">
             {firstPlayable && (
-              <PlayButton episodeId={firstPlayable.id} label="Play" autoPlay={autoPlay} />
+              <Link href={`/watch/${firstPlayable.id}`} className="btn-play">
+                <span aria-hidden>▶</span> Play
+              </Link>
             )}
             <MyListButton titleId={title.id} />
           </div>
@@ -122,11 +130,13 @@ export default async function TitlePage({
                   <div className="episode-sub">{formatDuration(ep.durationSecs)}</div>
                 )}
               </div>
-              <PlayButton
-                episodeId={ep.id}
-                label={ep.cfStatus === 'ready' ? 'Play' : 'Processing…'}
-                className="btn"
-              />
+              {ep.cfStatus === 'ready' ? (
+                <Link href={`/watch/${ep.id}`} className="btn">
+                  <span aria-hidden>▶</span> Play
+                </Link>
+              ) : (
+                <span style={{ color: 'var(--text-faint)', fontSize: 13 }}>Processing…</span>
+              )}
             </div>
           ))}
         </section>

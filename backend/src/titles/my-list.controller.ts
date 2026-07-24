@@ -2,6 +2,7 @@ import { Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
+import { TitlesService } from './titles.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('me/my-list')
@@ -13,7 +14,7 @@ export class MyListController {
     const rows = await this.prisma.myListItem.findMany({
       where: { userId: auth.userId, title: { published: true } },
       orderBy: { createdAt: 'desc' },
-      include: { title: true },
+      include: { title: { include: TitlesService.cardEpisodeInclude } },
     });
     return rows.map((r) => ({
       id: r.title.id.toString(),
@@ -24,6 +25,7 @@ export class MyListController {
       access: r.title.access,
       priceUgx: r.title.priceUgx,
       releaseYear: r.title.releaseYear,
+      firstEpisodeId: r.title.episodes[0]?.id?.toString() ?? null,
       addedAt: r.createdAt,
     }));
   }
