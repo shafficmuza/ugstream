@@ -51,7 +51,7 @@ export function SiteHeader({ settings }: { settings: AppSettings }) {
       </nav>
 
       <div className="nf-header-right">
-        <Suspense fallback={<div style={{ width: 200 }} />}>
+        <Suspense fallback={<div style={{ width: 36 }} />}>
           <SearchBox />
         </Suspense>
         <HeaderAuth />

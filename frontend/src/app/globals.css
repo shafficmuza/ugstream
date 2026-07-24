@@ -110,25 +110,104 @@ button {
   flex-shrink: 0;
 }
 
+/* Netflix-style expanding search: icon-only until clicked. */
 .nf-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.nf-search.open {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+.nf-search-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .nf-search input {
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: none;
+  outline: none;
   color: var(--text);
-  border-radius: 4px;
-  padding: 7px 10px;
-  font-size: 13px;
-  width: 200px;
-  transition: width 0.2s ease;
+  font-size: 14px;
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  transition: width 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
+}
+
+.nf-search.open input {
+  width: 210px;
+  padding: 7px 4px 7px 0;
+  opacity: 1;
 }
 
 .nf-search input::placeholder {
   color: var(--text-faint);
+}
+
+.nf-search-clear {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.nf-search-clear:hover {
+  color: var(--text);
+}
+
+/* Search results page */
+.search-context {
+  padding: 0 4%;
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: var(--text-faint);
+}
+
+.search-context strong {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.search-empty {
+  max-width: 520px;
+  margin: 8vh auto 0;
+  padding: 0 24px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.search-empty-sub {
+  margin: 18px 0 6px;
+  color: var(--text-dim);
+}
+
+.search-empty ul {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text-dim);
+}
+
+.search-empty li {
+  margin: 4px 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -867,7 +946,7 @@ button {
   .nf-nav {
     gap: 12px;
   }
-  .nf-search input {
+  .nf-search.open input {
     width: 130px;
   }
 }

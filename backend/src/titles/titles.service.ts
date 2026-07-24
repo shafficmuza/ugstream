@@ -21,7 +21,15 @@ export class TitlesService {
     const where: any = { published: true };
     if (query.kind) where.kind = query.kind;
     if (query.language) where.language = query.language;
-    if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
+    if (query.q) {
+      // Netflix-style search: match title names, VJ names, and genre names —
+      // "kids" or "vj junior" should find things, not just exact title text.
+      where.OR = [
+        { name: { contains: query.q, mode: 'insensitive' } },
+        { vjName: { contains: query.q, mode: 'insensitive' } },
+        { genres: { some: { genre: { name: { contains: query.q, mode: 'insensitive' } } } } },
+      ];
+    }
     if (query.genre) where.genres = { some: { genre: { slug: query.genre } } };
 
     const [items, total] = await Promise.all([
