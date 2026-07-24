@@ -1,5 +1,8 @@
 import { apiFetch } from '@/lib/api';
 import { PlayButton } from './play-button';
+import { MyListButton } from '@/components/my-list-button';
+import { PosterGrid } from '@/components/poster-grid';
+import { TitleCardData } from '@/components/title-card';
 
 interface Episode {
   id: string;
@@ -7,6 +10,7 @@ interface Episode {
   number: number;
   name: string | null;
   thumbnailUrl: string | null;
+  durationSecs: number | null;
   cfStatus: string;
 }
 
@@ -21,55 +25,121 @@ interface TitleDetail {
   access: string;
   priceUgx: number | null;
   releaseYear: number | null;
+  language: string | null;
+  vjName: string | null;
   genres: string[];
   episodes: Episode[];
 }
 
-export default async function TitlePage({ params }: { params: { slug: string } }) {
-  const title = await apiFetch<TitleDetail>(`/titles/${params.slug}`);
+function formatDuration(secs: number | null): string | null {
+  if (!secs) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.round((secs % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function accessLabel(access: string, priceUgx: number | null): string | null {
+  switch (access) {
+    case 'free':
+      return 'Free';
+    case 'subscription':
+      return 'Subscription';
+    case 'purchase':
+      return priceUgx ? `Rent · UGX ${priceUgx.toLocaleString()}` : 'Rent';
+    case 'sub_or_purchase':
+      return priceUgx ? `Subscription or UGX ${priceUgx.toLocaleString()}` : 'Subscription';
+    default:
+      return null;
+  }
+}
+
+export default async function TitlePage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams: { play?: string };
+}) {
+  const [title, similar] = await Promise.all([
+    apiFetch<TitleDetail>(`/titles/${params.slug}`),
+    apiFetch<TitleCardData[]>(`/titles/${params.slug}/similar`).catch(() => [] as TitleCardData[]),
+  ]);
+
+  const art = title.bannerUrl ?? title.posterUrl;
+  const firstPlayable = title.episodes.find((e) => e.cfStatus === 'ready');
+  const movieDuration = title.kind === 'movie' ? formatDuration(title.episodes[0]?.durationSecs ?? null) : null;
+  const autoPlay = searchParams.play === '1';
 
   return (
     <main>
-      <div
-        className="title-banner"
-        style={{
-          backgroundImage: `linear-gradient(to bottom, rgba(11,11,15,0.2), #0b0b0f), url(${title.bannerUrl ?? title.posterUrl})`,
-        }}
-      >
-        <h1 style={{ margin: '0 0 8px' }}>{title.name}</h1>
-        <p style={{ opacity: 0.7, fontSize: 14 }}>
-          {title.releaseYear} · {title.genres.join(', ')}
-        </p>
-        <p style={{ maxWidth: 560, lineHeight: 1.5 }}>{title.description}</p>
+      <div className="title-hero" style={art ? { backgroundImage: `url(${art})` } : undefined}>
+        <div className="title-hero-content">
+          <h1>{title.name}</h1>
 
-        {title.kind === 'movie' && title.episodes[0] && (
-          <PlayButton episodeId={title.episodes[0].id} label="Play" />
-        )}
+          <div className="title-meta">
+            {title.releaseYear && <span>{title.releaseYear}</span>}
+            {movieDuration && <span>{movieDuration}</span>}
+            {title.kind === 'series' && <span>{title.episodes.length} episodes</span>}
+            {title.genres.length > 0 && <span>{title.genres.join(' · ')}</span>}
+            {title.vjName && <span>VJ: {title.vjName}</span>}
+            {accessLabel(title.access, title.priceUgx) && (
+              <span className={title.access === 'free' ? 'badge free' : 'badge'}>
+                {accessLabel(title.access, title.priceUgx)}
+              </span>
+            )}
+          </div>
+
+          {title.description && <p className="title-desc">{title.description}</p>}
+
+          <div className="billboard-actions">
+            {firstPlayable && (
+              <PlayButton episodeId={firstPlayable.id} label="Play" autoPlay={autoPlay} />
+            )}
+            <MyListButton titleId={title.id} />
+          </div>
+        </div>
       </div>
 
       {title.kind === 'series' && (
-        <section style={{ padding: '0 32px 32px' }}>
-          <h2 style={{ fontSize: 18 }}>Episodes</h2>
+        <section className="section">
+          <h2>Episodes</h2>
           {title.episodes.map((ep) => (
-            <div
-              key={ep.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 0',
-                borderBottom: '1px solid #222',
-              }}
-            >
-              <span style={{ opacity: 0.6, width: 70 }}>
-                S{ep.season} E{ep.number}
-              </span>
-              <span style={{ flex: 1 }}>{ep.name ?? `Episode ${ep.number}`}</span>
-              <PlayButton episodeId={ep.id} label={ep.cfStatus === 'ready' ? 'Play' : 'Processing…'} />
+            <div key={ep.id} className="episode-row">
+              <span className="episode-num">{ep.number}</span>
+              {ep.thumbnailUrl ? (
+                <img className="episode-thumb" src={ep.thumbnailUrl} alt="" loading="lazy" />
+              ) : (
+                <div className="episode-thumb" />
+              )}
+              <div className="episode-info">
+                <div className="episode-name">
+                  {ep.name ?? `Episode ${ep.number}`}
+                  {title.episodes.some((e) => e.season !== 1) && (
+                    <span style={{ color: 'var(--text-faint)', fontWeight: 400 }}> · S{ep.season}</span>
+                  )}
+                </div>
+                {formatDuration(ep.durationSecs) && (
+                  <div className="episode-sub">{formatDuration(ep.durationSecs)}</div>
+                )}
+              </div>
+              <PlayButton
+                episodeId={ep.id}
+                label={ep.cfStatus === 'ready' ? 'Play' : 'Processing…'}
+                className="btn"
+              />
             </div>
           ))}
         </section>
       )}
+
+      {similar.length > 0 && (
+        <section className="section">
+          <h2>More Like This</h2>
+          <PosterGrid titles={similar} emptyText="" />
+        </section>
+      )}
+
+      <div style={{ height: 60 }} />
     </main>
   );
 }

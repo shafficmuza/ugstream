@@ -33,4 +33,9 @@ export class TitlesController {
   detail(@Param('slug') slug: string) {
     return this.titles.findBySlug(slug);
   }
+
+  @Get('titles/:slug/similar')
+  similar(@Param('slug') slug: string) {
+    return this.titles.similar(slug);
+  }
 }

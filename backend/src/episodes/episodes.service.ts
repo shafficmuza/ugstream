@@ -82,6 +82,8 @@ export class EpisodesService {
     return rows.map((r) => ({
       episodeId: r.episode.id.toString(),
       positionSecs: r.positionSecs,
+      durationSecs: r.episode.durationSecs,
+      thumbnailUrl: r.episode.thumbnailUrl,
       title: { slug: r.episode.title.slug, name: r.episode.title.name, posterUrl: r.episode.title.posterUrl },
       season: r.episode.season,
       number: r.episode.number,

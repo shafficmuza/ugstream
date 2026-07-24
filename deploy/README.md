@@ -168,6 +168,38 @@ overhead. Postgres stays in Docker because it almost never needs a rebuild.
   `backend/.env` once you have them; currency switches from EUR to UGX
   automatically (`momo.service.ts`'s `currency` getter).
 
+## Netflix-style UI + features (2026-07-23 redesign)
+The public site was rebuilt to a Netflix-style design system
+(`frontend/src/app/globals.css` is the single source of design tokens —
+`--bg: #141414`, `--accent: #e50914`, fixed header, hover-zoom cards):
+
+- **Fixed translucent header** that turns solid on scroll
+  (`site-header.tsx`, client component), with nav (Home / Movies / Series /
+  Kids / My List), a live search box (debounced, navigates to
+  `/search?q=…`), and the auth controls.
+- **Billboard hero** on the home page: newest published title with art,
+  Play (deep-links `/title/slug?play=1` → autoplay via `PlayButton
+  autoPlay` prop) + More Info. Art priority: title `bannerUrl` → admin
+  hero background (settings) → poster.
+- **`GET /v1/home` response shape changed** from a bare rail array to
+  `{ billboard, rails }`; rails now include New This Week, **Top 10 Today**
+  (distinct-viewer counts via raw SQL over watch_history — only shows once
+  ≥3 titles have viewers), Movies, Series, and one rail per genre.
+  **Deploy backend + frontend together** — the old frontend crashes on the
+  new shape.
+- **Continue Watching rail** (client-side, per-user) with red progress
+  bars; `/me/continue-watching` now returns `durationSecs`/`thumbnailUrl`.
+- **My List** (watchlist): `my_list_items` table (migration
+  `20260723*_my_list`), `GET/POST/DELETE /v1/me/my-list[/:titleId]`,
+  round +/✓ button on title pages, `/my-list` page.
+- **Title page**: full-bleed backdrop hero, metadata row
+  (year/duration/episode count/genres/VJ/access badge), episode rows with
+  16:9 thumbnails and durations, **More Like This** via
+  `GET /v1/titles/:slug/similar` (shared genres, newest fallback).
+- **Browse pages**: `/movies`, `/series`, `/kids` (genre=kids), `/search`.
+- Rails have hover arrow paging on desktop, native swipe on mobile
+  (`components/rail.tsx`).
+
 ## Temporary: OTP bypass (no SMS provider yet)
 `OTP_STATIC_CODE="1234"` in `backend/.env` means **every** phone number
 receives the same fixed code — `/auth/otp/request` doesn't send a real SMS,

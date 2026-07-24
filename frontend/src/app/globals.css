@@ -7,11 +7,24 @@ html, body {
   overflow-x: hidden;
 }
 
+:root {
+  --bg: #141414;
+  --bg-raised: #181818;
+  --bg-hover: #232323;
+  --text: #ffffff;
+  --text-dim: #b3b3b3;
+  --text-faint: #808080;
+  --accent: #e50914;
+  --header-h: 68px;
+}
+
 body {
   margin: 0;
-  background: #0b0b0f;
-  color: #f2f2f2;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Helvetica Neue', Helvetica, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -23,101 +36,590 @@ img {
   max-width: 100%;
 }
 
-.rail {
-  padding: 24px 32px 0;
+button {
+  font-family: inherit;
 }
 
-.rail h2 {
-  font-size: 18px;
-  margin: 0 0 12px;
+:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
-.rail-scroller {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-}
+/* ------------------------------------------------------------------ */
+/* Header                                                              */
+/* ------------------------------------------------------------------ */
 
-.card {
-  flex: 0 0 auto;
-  width: 150px;
-}
-
-.card img {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-  border-radius: 6px;
-  background: #1c1c22;
-}
-
-.card-title {
-  font-size: 13px;
-  margin-top: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.header {
+.nf-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 32px;
-  flex-wrap: wrap;
+  gap: 24px;
+  height: var(--header-h);
+  padding: 0 4%;
+  background-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 10%, rgba(0, 0, 0, 0));
+  transition: background-color 0.3s ease;
 }
 
-.header .brand {
-  font-weight: 700;
-  font-size: 20px;
-  letter-spacing: -0.5px;
+.nf-header.solid {
+  background-color: var(--bg);
 }
+
+.nf-header .brand {
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.nf-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nf-nav-link {
+  font-size: 14px;
+  color: var(--text-dim);
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+
+.nf-nav-link:hover {
+  color: var(--text);
+}
+
+.nf-nav-link.active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nf-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.nf-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nf-search input {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 200px;
+  transition: width 0.2s ease;
+}
+
+.nf-search input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
 
 .btn {
-  display: inline-block;
-  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 20px;
   border-radius: 4px;
-  background: #e6363f;
+  background: var(--accent);
   color: white;
   font-weight: 600;
+  font-size: 14px;
   border: none;
   cursor: pointer;
   white-space: nowrap;
 }
 
-/* Admin-editable hero background (homepage) */
-.hero {
-  min-height: 40vh;
-  background-size: cover;
-  background-position: center;
+.btn:hover {
+  background: #f6121d;
+}
+
+.btn-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 26px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #000000;
+  font-weight: 700;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-play:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.btn-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 26px;
+  border-radius: 4px;
+  background: rgba(109, 109, 110, 0.7);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-more:hover {
+  background: rgba(109, 109, 110, 0.5);
+}
+
+/* Round icon button (My List +/✓, etc.) */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: rgba(20, 20, 20, 0.55);
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.btn-icon:hover {
+  border-color: #ffffff;
+  background: rgba(40, 40, 40, 0.7);
+}
+
+/* ------------------------------------------------------------------ */
+/* Billboard (homepage hero)                                           */
+/* ------------------------------------------------------------------ */
+
+.billboard {
+  position: relative;
+  min-height: 62vh;
   display: flex;
   align-items: flex-end;
-  padding: 32px;
-  margin-bottom: 8px;
-}
-
-.hero-tagline {
-  font-size: clamp(16px, 3vw, 24px);
-  font-weight: 600;
-  max-width: 600px;
-  margin: 0;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-}
-
-/* Title detail banner */
-.title-banner {
   background-size: cover;
-  background-position: center;
-  padding: 120px 32px 32px;
+  background-position: center top;
+  margin-bottom: -6vh;
 }
 
-.title-banner h1 {
-  font-size: clamp(24px, 5vw, 32px);
+.billboard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(20, 20, 20, 0.75) 0%, rgba(20, 20, 20, 0.2) 55%, rgba(20, 20, 20, 0) 100%),
+    linear-gradient(to top, var(--bg) 0%, rgba(20, 20, 20, 0) 45%);
 }
 
-/* Admin-editable background (login/register) */
+.billboard-content {
+  position: relative;
+  padding: 0 4% 12vh;
+  max-width: 640px;
+}
+
+.billboard-title {
+  font-size: clamp(28px, 4.5vw, 56px);
+  font-weight: 800;
+  margin: 0 0 14px;
+  line-height: 1.05;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.billboard-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.billboard-desc {
+  font-size: clamp(14px, 1.3vw, 18px);
+  line-height: 1.45;
+  margin: 0 0 22px;
+  color: #ffffff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.billboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Rails                                                               */
+/* ------------------------------------------------------------------ */
+
+.rail {
+  position: relative;
+  padding: 3vw 0 0;
+  z-index: 1;
+}
+
+.rail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 4%;
+  margin: 0 0 10px;
+}
+
+.rail-header h2 {
+  font-size: clamp(15px, 1.4vw, 20px);
+  font-weight: 700;
+  margin: 0;
+  color: #e5e5e5;
+}
+
+.rail-body {
+  position: relative;
+}
+
+.rail-scroller {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 4% 8px;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.rail-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-arrow {
+  position: absolute;
+  top: 0;
+  bottom: 8px;
+  width: 3.5%;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 20, 0.5);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 26px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.rail-body:hover .rail-arrow {
+  opacity: 1;
+}
+
+.rail-arrow.left {
+  left: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.rail-arrow.right {
+  right: 0;
+  border-radius: 4px 0 0 4px;
+}
+
+.rail-arrow:hover {
+  background: rgba(20, 20, 20, 0.8);
+}
+
+/* ------------------------------------------------------------------ */
+/* Cards                                                               */
+/* ------------------------------------------------------------------ */
+
+.card {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(120px, 15vw, 190px);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-raised);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card:hover {
+  transform: scale(1.06);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 3;
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: #1c1c22;
+}
+
+.card-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26px 10px 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.card:hover .card-overlay {
+  opacity: 1;
+}
+
+.card-overlay .card-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.card-overlay .card-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: white;
+  text-transform: uppercase;
+}
+
+.badge.free {
+  background: #2e7d32;
+}
+
+/* Continue-watching progress bar */
+.progress-track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Top 10 rail */
+.top10-item {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+.top10-rank {
+  font-size: clamp(70px, 9vw, 130px);
+  font-weight: 800;
+  line-height: 0.8;
+  margin-right: -0.18em;
+  color: var(--bg);
+  -webkit-text-stroke: 2px #595959;
+  font-family: Arial Black, Arial, sans-serif;
+  z-index: 0;
+  user-select: none;
+}
+
+.top10-item .card {
+  z-index: 1;
+  width: clamp(100px, 11vw, 150px);
+}
+
+/* ------------------------------------------------------------------ */
+/* Title detail                                                        */
+/* ------------------------------------------------------------------ */
+
+.title-hero {
+  position: relative;
+  min-height: 56vh;
+  display: flex;
+  align-items: flex-end;
+  background-size: cover;
+  background-position: center 20%;
+}
+
+.title-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(20, 20, 20, 0.8) 0%, rgba(20, 20, 20, 0.25) 60%, rgba(20, 20, 20, 0.05) 100%),
+    linear-gradient(to top, var(--bg) 2%, rgba(20, 20, 20, 0) 50%);
+}
+
+.title-hero-content {
+  position: relative;
+  padding: 16vh 4% 5vh;
+  max-width: 720px;
+}
+
+.title-hero h1 {
+  font-size: clamp(26px, 4vw, 48px);
+  font-weight: 800;
+  margin: 0 0 12px;
+  line-height: 1.08;
+}
+
+.title-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.title-desc {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #e5e5e5;
+  margin: 0 0 20px;
+  max-width: 600px;
+}
+
+.section {
+  padding: 32px 4% 0;
+}
+
+.section h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+/* Episode rows */
+.episode-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 12px;
+  border-bottom: 1px solid #303030;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.episode-row:hover {
+  background: var(--bg-hover);
+}
+
+.episode-num {
+  font-size: 20px;
+  color: var(--text-faint);
+  width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.episode-thumb {
+  width: 130px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #1c1c22;
+  flex-shrink: 0;
+}
+
+.episode-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.episode-info .episode-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.episode-info .episode-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Poster grid (browse/search/my-list pages) */
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px 10px;
+  padding: 0 4%;
+}
+
+.poster-grid .card {
+  width: auto;
+}
+
+/* Inside an already-padded .section, don't double the side padding. */
+.section .poster-grid {
+  padding: 0;
+}
+
+.page {
+  padding-top: calc(var(--header-h) + 24px);
+  min-height: 100vh;
+}
+
+.page-title {
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 800;
+  margin: 0 0 20px;
+  padding: 0 4%;
+}
+
+.empty-state {
+  padding: 40px 4%;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Auth pages (admin-editable background)                              */
+/* ------------------------------------------------------------------ */
+
 .auth-page {
   min-height: 100vh;
   background-size: cover;
@@ -130,14 +632,36 @@ img {
 
 .auth-card {
   width: 100%;
-  max-width: 360px;
-  background: rgba(11, 11, 15, 0.7);
-  padding: 28px 24px;
+  max-width: 380px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 40px 36px;
   border-radius: 8px;
 }
 
-/* Admin tables can be wider than a phone screen — scroll the table itself
-   rather than letting it force the whole page to scroll horizontally. */
+.auth-card h1 {
+  font-size: 26px;
+  margin: 0 0 20px;
+}
+
+.auth-card input {
+  width: 100%;
+  background: #333333;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  padding: 12px 14px;
+  font-size: 15px;
+  margin-bottom: 14px;
+}
+
+.auth-card input::placeholder {
+  color: #8c8c8c;
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin                                                               */
+/* ------------------------------------------------------------------ */
+
 .table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -145,61 +669,132 @@ img {
 
 .admin-shell {
   display: flex;
-  min-height: calc(100vh - 61px);
+  min-height: 100vh;
+  padding-top: var(--header-h);
 }
 
 .admin-nav {
   width: 180px;
   flex-shrink: 0;
-  border-right: 1px solid #222;
+  border-right: 1px solid #303030;
   padding: 20px 0;
 }
 
 .admin-content {
   flex: 1;
   padding: 30px 40px;
-  min-width: 0; /* let flex children shrink below their content size */
+  min-width: 0;
 }
 
 .admin-nav-link {
   display: block;
   padding: 10px 20px;
   font-size: 14px;
-  opacity: 0.75;
+  color: var(--text-dim);
   border-left: 3px solid transparent;
   white-space: nowrap;
 }
 
 .admin-nav-link.active {
-  background: #1c1c22;
-  border-left-color: #e6363f;
-  opacity: 1;
+  background: var(--bg-raised);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                          */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  .nf-nav {
+    gap: 12px;
+  }
+  .nf-search input {
+    width: 130px;
+  }
 }
 
 @media (max-width: 720px) {
-  .header {
-    padding: 12px 16px;
+  :root {
+    --header-h: 56px;
   }
 
-  .rail {
-    padding: 16px 16px 0;
+  .nf-header {
+    gap: 14px;
+    padding: 0 16px;
   }
 
-  .hero {
-    padding: 20px;
-    min-height: 32vh;
+  .nf-header .brand {
+    font-size: 18px;
+  }
+
+  .nf-nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nf-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .billboard {
+    min-height: 48vh;
+    margin-bottom: 0;
+  }
+
+  .billboard-content {
+    padding: 0 16px 6vh;
+  }
+
+  .rail-header {
+    padding: 0 16px;
+  }
+
+  .rail-scroller {
+    padding: 4px 16px 8px;
+  }
+
+  .rail-arrow {
+    display: none;
+  }
+
+  .card {
+    width: 110px;
+  }
+
+  .top10-rank {
+    -webkit-text-stroke-width: 1.5px;
+  }
+
+  .title-hero {
+    min-height: 44vh;
+  }
+
+  .title-hero-content {
+    padding: 12vh 16px 4vh;
+  }
+
+  .section {
+    padding: 24px 16px 0;
+  }
+
+  .episode-thumb {
+    width: 96px;
+  }
+
+  .poster-grid {
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+    padding: 0 16px;
+  }
+
+  .page-title {
+    padding: 0 16px;
   }
 
   .auth-card {
-    padding: 22px 18px;
+    padding: 28px 20px;
   }
 
-  .title-banner {
-    padding: 64px 16px 20px;
-  }
-
-  /* Sidebar becomes a horizontal scrollable strip above the content
-     instead of squeezing a fixed 180px column out of a narrow screen. */
   .admin-shell {
     flex-direction: column;
     min-height: auto;
@@ -210,7 +805,7 @@ img {
     display: flex;
     overflow-x: auto;
     border-right: none;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid #303030;
     padding: 8px;
   }
 
@@ -222,7 +817,7 @@ img {
 
   .admin-nav-link.active {
     border-left-color: transparent;
-    border-bottom-color: #e6363f;
+    border-bottom-color: var(--accent);
   }
 
   .admin-content {

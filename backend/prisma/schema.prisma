@@ -56,6 +56,7 @@ model User {
   subscriptions Subscription[]
   purchases     Purchase[]
   watchHistory  WatchHistory[]
+  myList        MyListItem[]
 
   @@map("users")
 }
@@ -118,6 +119,7 @@ model Title {
   episodes    Episode[]
   genres      TitleGenre[]
   purchases   Purchase[]
+  myListItems MyListItem[]
 
   @@index([published, kind, language])
   @@map("titles")
@@ -242,6 +244,17 @@ model Purchase {
 
   @@index([userId, titleId, expiresAt(sort: Desc)])
   @@map("purchases")
+}
+
+model MyListItem {
+  userId    BigInt   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleId   BigInt   @map("title_id")
+  title     Title    @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, titleId])
+  @@map("my_list_items")
 }
 
 model WatchHistory {
