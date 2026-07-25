@@ -108,7 +108,8 @@ function EpisodesSection({
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
-  async function addEpisode() {
+  async function addEpisode(e?: React.FormEvent) {
+    e?.preventDefault();
     const token = getAccessToken();
     if (!token) return;
     setError(null);
@@ -182,7 +183,7 @@ function EpisodesSection({
       </div>
 
       {adding && (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+        <form onSubmit={addEpisode} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
           {kind === 'series' && (
             <>
               <div>
@@ -199,10 +200,10 @@ function EpisodesSection({
             <label style={labelStyle}>Name (optional)</label>
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <button className="btn" style={{ marginBottom: 16 }} onClick={addEpisode}>
+          <button className="btn" style={{ marginBottom: 16 }} type="submit">
             Create
           </button>
-        </div>
+        </form>
       )}
 
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}

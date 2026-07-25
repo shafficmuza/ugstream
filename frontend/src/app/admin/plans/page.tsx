@@ -26,7 +26,8 @@ export default function AdminPlansPage() {
 
   useEffect(load, []);
 
-  async function create() {
+  async function create(e?: React.FormEvent) {
+    e?.preventDefault();
     const token = getAccessToken();
     if (!token || !form.name || !form.priceUgx || !form.durationDays) return;
     setError(null);
@@ -60,23 +61,23 @@ export default function AdminPlansPage() {
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Subscription plans</h1>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 500, marginBottom: 24, flexWrap: 'wrap' }}>
+      <form onSubmit={create} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 500, marginBottom: 24, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 140 }}>
           <label style={labelStyle}>Name</label>
           <input style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </div>
         <div style={{ width: 120 }}>
           <label style={labelStyle}>Price (UGX)</label>
-          <input style={inputStyle} value={form.priceUgx} onChange={(e) => setForm({ ...form, priceUgx: e.target.value })} />
+          <input style={inputStyle} inputMode="numeric" value={form.priceUgx} onChange={(e) => setForm({ ...form, priceUgx: e.target.value })} />
         </div>
         <div style={{ width: 100 }}>
           <label style={labelStyle}>Days</label>
-          <input style={inputStyle} value={form.durationDays} onChange={(e) => setForm({ ...form, durationDays: e.target.value })} />
+          <input style={inputStyle} inputMode="numeric" value={form.durationDays} onChange={(e) => setForm({ ...form, durationDays: e.target.value })} />
         </div>
-        <button className="btn" style={{ marginBottom: 16 }} onClick={create}>
+        <button className="btn" style={{ marginBottom: 16 }} type="submit">
           Add
         </button>
-      </div>
+      </form>
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
       <div className="table-wrap">

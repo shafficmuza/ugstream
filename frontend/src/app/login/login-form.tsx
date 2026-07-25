@@ -14,7 +14,8 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function requestOtp() {
+  async function requestOtp(e?: React.FormEvent) {
+    e?.preventDefault();
     setLoading(true);
     setError(null);
     try {
@@ -27,7 +28,8 @@ export function LoginForm() {
     }
   }
 
-  async function verifyOtp() {
+  async function verifyOtp(e?: React.FormEvent) {
+    e?.preventDefault();
     setLoading(true);
     setError(null);
     try {
@@ -49,33 +51,37 @@ export function LoginForm() {
       <h1 style={{ fontSize: 22 }}>Log in</h1>
 
       {step === 'phone' && (
-        <>
+        <form onSubmit={requestOtp}>
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+256700000000"
+            type="tel"
+            autoFocus
             style={inputStyle}
           />
-          <button className="btn" style={{ width: '100%' }} onClick={requestOtp} disabled={loading}>
+          <button className="btn" style={{ width: '100%' }} type="submit" disabled={loading}>
             {loading ? 'Sending…' : 'Send code'}
           </button>
-        </>
+        </form>
       )}
 
       {step === 'code' && (
-        <>
+        <form onSubmit={verifyOtp}>
           <p style={{ opacity: 0.7, fontSize: 14 }}>Enter the 6-digit code sent to {phone}</p>
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="123456"
             maxLength={6}
+            inputMode="numeric"
+            autoFocus
             style={inputStyle}
           />
-          <button className="btn" style={{ width: '100%' }} onClick={verifyOtp} disabled={loading}>
+          <button className="btn" style={{ width: '100%' }} type="submit" disabled={loading}>
             {loading ? 'Verifying…' : 'Verify & continue'}
           </button>
-        </>
+        </form>
       )}
 
       {error && <p style={{ color: '#ff6b6b', marginTop: 12 }}>{error}</p>}

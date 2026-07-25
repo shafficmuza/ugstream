@@ -29,7 +29,8 @@ export default function AdminGenresPage() {
 
   useEffect(load, []);
 
-  async function create() {
+  async function create(e?: React.FormEvent) {
+    e?.preventDefault();
     const token = getAccessToken();
     if (!token || !name.trim()) return;
     setError(null);
@@ -56,15 +57,15 @@ export default function AdminGenresPage() {
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Genres</h1>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 400, marginBottom: 24 }}>
+      <form onSubmit={create} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', maxWidth: 400, marginBottom: 24 }}>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>New genre name</label>
           <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <button className="btn" style={{ marginBottom: 16 }} onClick={create}>
+        <button className="btn" style={{ marginBottom: 16 }} type="submit">
           Add
         </button>
-      </div>
+      </form>
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
       <div className="table-wrap">

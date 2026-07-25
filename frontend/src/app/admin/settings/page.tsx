@@ -56,7 +56,8 @@ export default function AdminSettingsPage() {
     }
   }
 
-  async function save() {
+  async function save(e?: React.FormEvent) {
+    e?.preventDefault();
     const token = getAccessToken();
     if (!token) return;
     setSaving(true);
@@ -100,37 +101,40 @@ export default function AdminSettingsPage() {
         />
       </div>
 
-      <label style={labelStyle}>App name</label>
-      <input
-        style={inputStyle}
-        value={form.appName}
-        onChange={(e) => setForm((f) => ({ ...f, appName: e.target.value }))}
-      />
+      <form onSubmit={save}>
+        <label style={labelStyle}>App name</label>
+        <input
+          style={inputStyle}
+          value={form.appName}
+          onChange={(e) => setForm((f) => ({ ...f, appName: e.target.value }))}
+        />
 
-      <label style={labelStyle}>Tagline</label>
-      <input
-        style={inputStyle}
-        value={form.tagline ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
-      />
+        <label style={labelStyle}>Tagline</label>
+        <input
+          style={inputStyle}
+          value={form.tagline ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
+        />
 
-      <label style={labelStyle}>Support email</label>
-      <input
-        style={inputStyle}
-        value={form.supportEmail ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))}
-      />
+        <label style={labelStyle}>Support email</label>
+        <input
+          style={inputStyle}
+          type="email"
+          value={form.supportEmail ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))}
+        />
 
-      <label style={labelStyle}>Support phone</label>
-      <input
-        style={inputStyle}
-        value={form.supportPhone ?? ''}
-        onChange={(e) => setForm((f) => ({ ...f, supportPhone: e.target.value }))}
-      />
+        <label style={labelStyle}>Support phone</label>
+        <input
+          style={inputStyle}
+          value={form.supportPhone ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, supportPhone: e.target.value }))}
+        />
 
-      <button className="btn" style={{ width: '100%', marginTop: 8, marginBottom: 32 }} onClick={save} disabled={saving}>
-        {saving ? 'Saving…' : 'Save changes'}
-      </button>
+        <button className="btn" style={{ width: '100%', marginTop: 8, marginBottom: 32 }} type="submit" disabled={saving}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </form>
 
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Background art</h2>
       <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
