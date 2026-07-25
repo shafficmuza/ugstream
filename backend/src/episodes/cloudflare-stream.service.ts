@@ -40,6 +40,11 @@ export class CloudflareStreamService {
         body: JSON.stringify({
           maxDurationSeconds: 4 * 60 * 60,
           requireSignedURLs: true,
+          // Abandoned placeholders (admin clicked "Add video" but never
+          // uploaded, or the upload failed) previously lingered as
+          // "pending" videos in the Cloudflare dashboard indefinitely.
+          // With an expiry Cloudflare purges them itself.
+          expiry: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         }),
       },
     );
@@ -52,6 +57,57 @@ export class CloudflareStreamService {
     }
 
     return { uploadUrl: json.result.uploadURL, videoUid: json.result.uid };
+  }
+
+  /** All videos in the Stream account (uid + state), for reconciliation. */
+  async listVideos(): Promise<{ uid: string; state: string }[]> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream?per_page=1000`,
+      { headers: { Authorization: `Bearer ${this.apiToken}` } },
+    );
+    const json = await res.json();
+    if (!json.success) {
+      throw new InternalServerErrorException(`Cloudflare list failed: ${JSON.stringify(json.errors)}`);
+    }
+    return json.result.map((v: any) => ({ uid: v.uid, state: v.status?.state }));
+  }
+
+  /**
+   * Best-effort delete — used when re-pointing an episode at a fresh
+   * upload so the superseded video doesn't linger in the dashboard.
+   * A 404 (placeholder already expired/purged) is success, not an error.
+   */
+  async deleteVideo(videoUid: string): Promise<void> {
+    await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${this.apiToken}` } },
+    ).catch(() => undefined);
+  }
+
+  /**
+   * Server-side URL ingest (`/stream/copy`) — Cloudflare downloads the
+   * file itself, bypassing the ~200MB browser direct-upload limit. The
+   * only workable path for large files.
+   */
+  async copyFromUrl(url: string, name: string): Promise<{ videoUid: string }> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/copy`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url, meta: { name }, requireSignedURLs: true }),
+      },
+    );
+    const json = await res.json();
+    if (!json.success) {
+      throw new InternalServerErrorException(
+        `Cloudflare URL ingest failed: ${JSON.stringify(json.errors)}`,
+      );
+    }
+    return { videoUid: json.result.uid };
   }
 
   /**

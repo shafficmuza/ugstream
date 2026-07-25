@@ -42,4 +42,24 @@ export class EpisodesController {
   getUploadUrl(@Param('episodeId') episodeId: string) {
     return this.episodes.getUploadUrl(BigInt(episodeId));
   }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/import-url')
+  importFromUrl(
+    @Param('titleId') titleId: string,
+    @Body() body: { url: string; name?: string; season?: number; number?: number },
+  ) {
+    return this.episodes.importFromUrl(
+      BigInt(titleId),
+      body.url,
+      body.name ?? 'Imported video',
+      { season: body.season, number: body.number },
+    );
+  }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/stream/cleanup-orphans')
+  cleanupOrphans() {
+    return this.episodes.cleanupOrphans();
+  }
 }

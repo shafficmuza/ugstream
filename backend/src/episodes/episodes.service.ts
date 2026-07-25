@@ -121,12 +121,58 @@ export class EpisodesService {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
 
+    // Re-pointing at a fresh upload orphans the previous Cloudflare video.
+    // If it hadn't finished (still uploading), delete it so it doesn't
+    // linger as a "pending" upload in the dashboard forever. A ready video
+    // is left alone — it's a real, previously-uploaded cut.
+    if (episode.cfVideoUid && episode.cfStatus !== 'ready') {
+      await this.stream.deleteVideo(episode.cfVideoUid);
+    }
+
     const { uploadUrl, videoUid } = await this.stream.createDirectUpload();
     await this.prisma.episode.update({
       where: { id: episodeId },
       data: { cfVideoUid: videoUid, cfStatus: 'uploading' },
     });
     return { uploadUrl };
+  }
+
+  /**
+   * Import a video into an episode straight from a URL via Cloudflare's
+   * server-side ingest — the reliable path for large files (no ~200MB
+   * browser-upload ceiling). Deletes any superseded placeholder first.
+   */
+  async importFromUrl(titleId: bigint, url: string, name: string, dto: { season?: number; number?: number }) {
+    const { videoUid } = await this.stream.copyFromUrl(url, name);
+    const episode = await this.prisma.episode.create({
+      data: {
+        titleId,
+        season: dto.season ?? 1,
+        number: dto.number ?? 1,
+        cfVideoUid: videoUid,
+        cfStatus: 'uploading',
+      },
+    });
+    return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
+  }
+
+  /**
+   * Reconcile Cloudflare against our DB: delete every Cloudflare video not
+   * referenced by any episode (abandoned placeholders, superseded
+   * re-uploads). Safe to run any time — only touches videos we've
+   * "forgotten". Returns what it removed.
+   */
+  async cleanupOrphans() {
+    const [cfVideos, episodes] = await Promise.all([
+      this.stream.listVideos(),
+      this.prisma.episode.findMany({ select: { cfVideoUid: true } }),
+    ]);
+    const known = new Set(episodes.map((e) => e.cfVideoUid).filter(Boolean) as string[]);
+    const orphans = cfVideos.filter((v) => !known.has(v.uid));
+    for (const v of orphans) {
+      await this.stream.deleteVideo(v.uid);
+    }
+    return { removed: orphans.length, uids: orphans.map((v) => v.uid) };
   }
 
   /**
