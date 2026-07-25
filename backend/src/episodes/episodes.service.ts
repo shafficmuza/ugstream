@@ -138,6 +138,27 @@ export class EpisodesService {
   }
 
   /**
+   * Resumable-upload URL for an existing episode. Deletes the superseded
+   * placeholder first (same anti-orphan logic as getUploadUrl) then
+   * creates a TUS upload sized to the incoming file.
+   */
+  async getTusUploadUrl(episodeId: bigint, uploadLength: number, filename: string) {
+    const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
+    if (!episode) throw new NotFoundException('Episode not found.');
+
+    if (episode.cfVideoUid && episode.cfStatus !== 'ready') {
+      await this.stream.deleteVideo(episode.cfVideoUid);
+    }
+
+    const { uploadUrl, videoUid } = await this.stream.createTusUpload(uploadLength, filename);
+    await this.prisma.episode.update({
+      where: { id: episodeId },
+      data: { cfVideoUid: videoUid, cfStatus: 'uploading' },
+    });
+    return { uploadUrl };
+  }
+
+  /**
    * Import a video into an episode straight from a URL via Cloudflare's
    * server-side ingest — the reliable path for large files (no ~200MB
    * browser-upload ceiling). Deletes any superseded placeholder first.

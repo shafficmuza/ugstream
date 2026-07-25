@@ -59,6 +59,47 @@ export class CloudflareStreamService {
     return { uploadUrl: json.result.uploadURL, videoUid: json.result.uid };
   }
 
+  /**
+   * Create a resumable (TUS) upload and return the tus endpoint URL the
+   * browser will PATCH chunks to. This is the ONLY viable path for large
+   * files: the plain direct_upload POST caps at ~200MB, so a 2GB movie
+   * fails every time on it. TUS uploads in chunks (resumable) up to 30GB.
+   * The API token stays server-side — Cloudflare pre-creates the upload
+   * here and hands back a URL that needs no auth to PATCH to.
+   */
+  async createTusUpload(
+    uploadLength: number,
+    name: string,
+  ): Promise<{ uploadUrl: string; videoUid: string }> {
+    const meta = [
+      `name ${Buffer.from(name).toString('base64')}`,
+      'requiresignedurls',
+    ].join(',');
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream?direct_user=true`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Tus-Resumable': '1.0.0',
+          'Upload-Length': String(uploadLength),
+          'Upload-Metadata': meta,
+        },
+      },
+    );
+    if (res.status !== 201) {
+      throw new InternalServerErrorException(
+        `Cloudflare tus create failed: ${res.status} ${await res.text()}`,
+      );
+    }
+    const uploadUrl = res.headers.get('Location');
+    const videoUid = res.headers.get('stream-media-id');
+    if (!uploadUrl || !videoUid) {
+      throw new InternalServerErrorException('Cloudflare tus create returned no upload URL.');
+    }
+    return { uploadUrl, videoUid };
+  }
+
   /** All videos in the Stream account (uid + state), for reconciliation. */
   async listVideos(): Promise<{ uid: string; state: string }[]> {
     const res = await fetch(

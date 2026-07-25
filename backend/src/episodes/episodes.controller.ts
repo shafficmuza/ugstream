@@ -44,6 +44,19 @@ export class EpisodesController {
   }
 
   @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/:episodeId/tus-upload')
+  getTusUploadUrl(
+    @Param('episodeId') episodeId: string,
+    @Body() body: { uploadLength: number; filename?: string },
+  ) {
+    return this.episodes.getTusUploadUrl(
+      BigInt(episodeId),
+      body.uploadLength,
+      body.filename ?? 'video',
+    );
+  }
+
+  @UseGuards(AdminGuard)
   @Post('admin/titles/:titleId/episodes/import-url')
   importFromUrl(
     @Param('titleId') titleId: string,

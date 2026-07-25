@@ -107,6 +107,8 @@ function EpisodesSection({
   const [error, setError] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
 
   async function addEpisode(e?: React.FormEvent) {
     e?.preventDefault();
@@ -138,28 +140,29 @@ function EpisodesSection({
     setUploadProgress(0);
     setError(null);
     try {
-      // The create-episode call already got us a Cloudflare direct-upload
-      // URL, but we don't keep it around client-side across reloads — so
-      // for a re-upload we'd need a fresh one. For the first upload right
-      // after creation this works because the episode list refetch below
-      // doesn't lose it within this session; simplest correct approach is
-      // to fetch a fresh upload URL each time.
+      // Resumable (TUS) upload — the old single-POST direct_upload capped
+      // at ~200MB, so any real movie (a 2GB file) failed every time and
+      // left an orphaned "pending" video behind. TUS chunks the file
+      // (resumable, retries on flaky connections) up to 30GB. The backend
+      // pre-creates the Cloudflare upload and returns its tus URL.
       const { uploadUrl } = await apiFetch<{ uploadUrl: string }>(
-        `/admin/titles/${titleId}/episodes/${episodeId}/upload-url`,
-        { method: 'POST', token },
+        `/admin/titles/${titleId}/episodes/${episodeId}/tus-upload`,
+        { method: 'POST', token, body: { uploadLength: file.size, filename: file.name } },
       );
 
+      const tus = await import('tus-js-client');
       await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', uploadUrl);
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error('Upload failed.')));
-        xhr.onerror = () => reject(new Error('Upload failed.'));
-        const body = new FormData();
-        body.append('file', file);
-        xhr.send(body);
+        const upload = new tus.Upload(file, {
+          uploadUrl, // Cloudflare already created the upload server-side
+          // 50MB chunks (multiple of 256KiB, as Cloudflare requires).
+          chunkSize: 50 * 1024 * 1024,
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          metadata: { filename: file.name, filetype: file.type },
+          onError: reject,
+          onProgress: (sent, total) => setUploadProgress(Math.round((sent / total) * 100)),
+          onSuccess: () => resolve(),
+        });
+        upload.start();
       });
 
       onChange();
@@ -168,6 +171,32 @@ function EpisodesSection({
     } finally {
       setUploadingId(null);
       setUploadProgress(null);
+    }
+  }
+
+  async function importVideoFromUrl(e?: React.FormEvent) {
+    e?.preventDefault();
+    const token = getAccessToken();
+    if (!token || !importUrl.trim()) return;
+    setImporting(true);
+    setError(null);
+    try {
+      await apiFetch(`/admin/titles/${titleId}/episodes/import-url`, {
+        method: 'POST',
+        token,
+        body: {
+          url: importUrl.trim(),
+          name: name || undefined,
+          season: kind === 'series' ? parseInt(season, 10) : 1,
+          number: kind === 'series' ? parseInt(number, 10) : 1,
+        },
+      });
+      setImportUrl('');
+      onChange();
+    } catch (e: any) {
+      setError(e.message ?? 'Import failed. Check the URL is a direct, publicly reachable video link.');
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -181,6 +210,25 @@ function EpisodesSection({
           </button>
         )}
       </div>
+
+      <form
+        onSubmit={importVideoFromUrl}
+        style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}
+      >
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <label style={labelStyle}>Import from a direct video URL (best for large files — no browser upload)</label>
+          <input
+            style={inputStyle}
+            type="url"
+            placeholder="https://…/movie.mp4"
+            value={importUrl}
+            onChange={(e) => setImportUrl(e.target.value)}
+          />
+        </div>
+        <button className="btn" style={{ marginBottom: 16 }} type="submit" disabled={importing || !importUrl.trim()}>
+          {importing ? 'Importing…' : 'Import'}
+        </button>
+      </form>
 
       {adding && (
         <form onSubmit={addEpisode} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
@@ -235,6 +283,7 @@ function EpisodesSection({
                   <input
                     type="file"
                     accept="video/*"
+                    title="Resumable upload — large files (movies) supported"
                     onChange={(e) => e.target.files?.[0] && uploadVideo(ep.id, e.target.files[0])}
                   />
                 )}
