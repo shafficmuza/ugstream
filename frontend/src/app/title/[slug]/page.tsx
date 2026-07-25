@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import { BackButton } from '@/components/back-button';
 import { MyListButton } from '@/components/my-list-button';
 import { PosterGrid } from '@/components/poster-grid';
 import { TitleCardData } from '@/components/title-card';
@@ -78,6 +79,7 @@ export default async function TitlePage({
 
   return (
     <main>
+      <BackButton />
       <div className="title-hero" style={art ? { backgroundImage: `url(${art})` } : undefined}>
         <div className="title-hero-content">
           <h1>{title.name}</h1>

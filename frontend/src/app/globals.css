@@ -605,6 +605,46 @@ button {
 }
 
 /* ------------------------------------------------------------------ */
+/* Floating back button (title detail, browse pages)                   */
+/* ------------------------------------------------------------------ */
+
+.back-fab {
+  position: fixed;
+  top: calc(var(--header-h) + 10px);
+  left: 16px;
+  z-index: 90; /* under the header (100), above page content */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  font-size: 22px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.back-fab:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.back-fab:active {
+  transform: scale(0.94);
+}
+
+@media (max-width: 720px) {
+  .back-fab {
+    top: calc(var(--header-h) + 6px);
+    left: 10px;
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Title detail                                                        */
 /* ------------------------------------------------------------------ */
 
