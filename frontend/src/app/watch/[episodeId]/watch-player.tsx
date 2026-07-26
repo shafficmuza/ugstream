@@ -16,11 +16,13 @@ export function WatchPlayer({
   episodeId,
   src,
   startAt,
+  hlsToken,
   onPause,
 }: {
   episodeId: string;
   src: string;
   startAt: number;
+  hlsToken?: string;
   onPause?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -71,13 +73,31 @@ export function WatchPlayer({
     document.addEventListener('fullscreenchange', restoreOrientation);
 
     let hls: Hls | undefined;
+    // For self-hosted R2 HLS, every request (master, variant playlists,
+    // segments) must carry the signed ?t=<token> the Worker checks. Playlists
+    // use relative URLs, so we append it to every request via a custom
+    // loader rather than relying on the query string propagating.
+    const withToken = (url: string): string => {
+      if (!hlsToken) return url;
+      return url.includes('t=') ? url : `${url}${url.includes('?') ? '&' : '?'}t=${hlsToken}`;
+    };
+
     if (Hls.isSupported()) {
-      hls = new Hls();
-      hls.loadSource(src);
+      class TokenLoader extends Hls.DefaultConfig.loader {
+        load(context: any, config: any, callbacks: any) {
+          if (context?.url) context.url = withToken(context.url);
+          super.load(context, config, callbacks);
+        }
+      }
+      hls = new Hls(hlsToken ? { loader: TokenLoader as any } : {});
+      hls.loadSource(withToken(src));
       hls.attachMedia(video);
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari/iOS play HLS natively.
-      video.src = src;
+      // Safari/iOS play HLS natively. Native player can't rewrite segment
+      // URLs, so it relies on the token propagating from the manifest URL —
+      // acceptable for the Cloudflare Stream path (its own signed URLs); the
+      // R2 path is primarily served through hls.js above.
+      video.src = withToken(src);
     }
 
     video.currentTime = startAt;

@@ -1,0 +1,17 @@
+name = "ham-hls-delivery"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# The custom hostname that fronts delivery. Point cdn.ham.sentepos.com at
+# this Worker via a route (Cloudflare dashboard → Workers Routes, or below).
+# routes = [
+#   { pattern = "cdn.ham.sentepos.com/*", zone_name = "sentepos.com" }
+# ]
+
+# R2 bucket binding — the bucket holding the HLS output (hls/ep-*/…).
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "REPLACE_WITH_R2_BUCKET_NAME"
+
+# HLS_TOKEN_SECRET must equal the backend's R2_HLS_TOKEN_SECRET. Set it as a
+# secret, never commit it:  wrangler secret put HLS_TOKEN_SECRET

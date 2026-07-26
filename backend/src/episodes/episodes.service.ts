@@ -1,8 +1,12 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Episode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
+import { R2Service } from '../media-storage/r2.service';
+import { TranscodeService } from './transcode.service';
+import { signHlsToken } from '../media-storage/hls-token';
 
 @Injectable()
 export class EpisodesService {
@@ -10,14 +14,25 @@ export class EpisodesService {
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
     private readonly stream: CloudflareStreamService,
+    private readonly r2: R2Service,
+    private readonly transcode: TranscodeService,
+    private readonly config: ConfigService,
   ) {}
 
   async play(userId: bigint, episodeId: bigint) {
     let episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
-    episode = await this.syncStatus(episode);
-    if (episode.cfStatus !== 'ready' || !episode.cfVideoUid) {
-      throw new NotFoundException('Video is not ready for playback yet.');
+
+    if (episode.videoProvider === 'r2_hls') {
+      if (episode.cfStatus !== 'ready' || !episode.r2Prefix) {
+        throw new NotFoundException('Video is not ready for playback yet.');
+      }
+    } else {
+      // Cloudflare Stream: self-heal a stuck status, then require the uid.
+      episode = await this.syncStatus(episode);
+      if (episode.cfStatus !== 'ready' || !episode.cfVideoUid) {
+        throw new NotFoundException('Video is not ready for playback yet.');
+      }
     }
 
     const result = await this.entitlements.check(userId, episode.titleId);
@@ -49,16 +64,65 @@ export class EpisodesService {
       this.prisma.title.findUniqueOrThrow({ where: { id: episode.titleId } }),
     ]);
 
-    const token = await this.stream.signPlaybackToken(episode.cfVideoUid);
-
-    return {
-      playbackUrl: this.stream.hlsUrl(episode.cfVideoUid, token),
-      expiresIn: 3600,
+    const meta = {
       resumeAt: history?.positionSecs ?? 0,
       // Metadata for the /watch page chrome (back-arrow target + overlay).
       title: { name: title.name, slug: title.slug, kind: title.kind },
       episode: { season: episode.season, number: episode.number, name: episode.name },
     };
+
+    if (episode.videoProvider === 'r2_hls') {
+      // Self-hosted 4K HLS on R2, delivered through the Cloudflare Worker.
+      // The short-lived token authorises the whole prefix; the player
+      // appends it to every segment request (the Worker checks it).
+      const secret = this.config.get<string>('R2_HLS_TOKEN_SECRET');
+      if (!secret) {
+        throw new HttpException('R2 delivery not configured.', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      const hlsToken = signHlsToken(episode.r2Prefix!, secret, 3600);
+      return {
+        provider: 'r2_hls' as const,
+        playbackUrl: `https://${this.r2.publicHost}/${episode.r2Prefix}master.m3u8`,
+        hlsToken,
+        expiresIn: 3600,
+        ...meta,
+      };
+    }
+
+    const token = await this.stream.signPlaybackToken(episode.cfVideoUid!);
+    return {
+      provider: 'cloudflare' as const,
+      playbackUrl: this.stream.hlsUrl(episode.cfVideoUid!, token),
+      expiresIn: 3600,
+      ...meta,
+    };
+  }
+
+  /**
+   * Kick off a self-hosted 4K transcode for a title from a source URL:
+   * creates an r2_hls episode and starts the ffmpeg ladder → R2 upload in
+   * the background. The alternative to Cloudflare Stream when true 4K is
+   * wanted (Stream caps at 1080p).
+   */
+  async transcode4k(titleId: bigint, sourceUrl: string, dto: { season?: number; number?: number; name?: string }) {
+    if (!this.r2.configured) {
+      throw new HttpException(
+        'R2 is not configured — set R2_* env vars first.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const episode = await this.prisma.episode.create({
+      data: {
+        titleId,
+        season: dto.season ?? 1,
+        number: dto.number ?? 1,
+        name: dto.name,
+        videoProvider: 'r2_hls',
+        cfStatus: 'uploading',
+      },
+    });
+    this.transcode.startTranscode(episode.id, sourceUrl);
+    return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
   async saveProgress(userId: bigint, episodeId: bigint, positionSecs: number) {

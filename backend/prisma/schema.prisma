@@ -139,7 +139,15 @@ model Episode {
   season        Int          @default(1) @db.SmallInt
   number        Int          @default(1) @db.SmallInt
   name          String?      @db.VarChar(200)
+  // Where this episode's video lives / is delivered from. 'cloudflare' =
+  // Cloudflare Stream (max 1080p); 'r2_hls' = self-transcoded 4K HLS ladder
+  // on Cloudflare R2. `cfStatus`/`durationSecs`/`thumbnailUrl` are reused as
+  // the generic ready-state regardless of provider.
+  videoProvider String       @default("cloudflare") @map("video_provider") @db.VarChar(20)
   cfVideoUid    String?      @unique @map("cf_video_uid") @db.VarChar(64)
+  // R2 key prefix holding this episode's HLS output, e.g. "hls/ep-123/".
+  // master.m3u8 lives at `${r2Prefix}master.m3u8`.
+  r2Prefix      String?      @map("r2_prefix") @db.VarChar(120)
   cfStatus      StreamStatus @default(pending) @map("cf_status")
   durationSecs  Int?         @map("duration_secs")
   thumbnailUrl  String?      @map("thumbnail_url")

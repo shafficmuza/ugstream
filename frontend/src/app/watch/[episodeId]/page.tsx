@@ -9,6 +9,8 @@ import { WatchPlayer } from './watch-player';
 interface PlaybackInfo {
   playbackUrl: string;
   resumeAt: number;
+  provider?: 'cloudflare' | 'r2_hls';
+  hlsToken?: string;
   title?: { name: string; slug: string; kind: string };
   episode?: { season: number; number: number; name: string | null };
 }
@@ -81,6 +83,7 @@ export default function WatchPage() {
           episodeId={params.episodeId}
           src={playback.playbackUrl}
           startAt={playback.resumeAt}
+          hlsToken={playback.hlsToken}
           onPause={showChrome}
         />
       ) : (

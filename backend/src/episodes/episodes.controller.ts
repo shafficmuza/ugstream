@@ -75,4 +75,22 @@ export class EpisodesController {
   cleanupOrphans() {
     return this.episodes.cleanupOrphans();
   }
+
+  /**
+   * Self-hosted true-4K path: transcode a source URL into a 2160p HLS ladder
+   * on R2 (Cloudflare Stream caps at 1080p). Returns immediately; the
+   * episode reports `uploading` until the background transcode finishes.
+   */
+  @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/transcode-4k')
+  transcode4k(
+    @Param('titleId') titleId: string,
+    @Body() body: { url: string; name?: string; season?: number; number?: number },
+  ) {
+    return this.episodes.transcode4k(BigInt(titleId), body.url, {
+      season: body.season,
+      number: body.number,
+      name: body.name,
+    });
+  }
 }
