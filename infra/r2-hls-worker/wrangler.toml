@@ -1,9 +1,12 @@
 name = "ham-hls-delivery"
 main = "src/worker.js"
 compatibility_date = "2024-11-01"
+# Deploys to <name>.<your-subdomain>.workers.dev — no DNS/zone setup needed.
+# sentepos.com is not on Cloudflare, so we use workers.dev; add a custom
+# domain later only if you move the zone to Cloudflare.
+workers_dev = true
 
-# The custom hostname that fronts delivery. Point cdn.ham.sentepos.com at
-# this Worker via a route (Cloudflare dashboard → Workers Routes, or below).
+# A custom hostname would go here IF sentepos.com were a Cloudflare zone:
 # routes = [
 #   { pattern = "cdn.ham.sentepos.com/*", zone_name = "sentepos.com" }
 # ]
@@ -11,7 +14,7 @@ compatibility_date = "2024-11-01"
 # R2 bucket binding — the bucket holding the HLS output (hls/ep-*/…).
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "REPLACE_WITH_R2_BUCKET_NAME"
+bucket_name = "ham-hls"
 
 # HLS_TOKEN_SECRET must equal the backend's R2_HLS_TOKEN_SECRET. Set it as a
 # secret, never commit it:  wrangler secret put HLS_TOKEN_SECRET
