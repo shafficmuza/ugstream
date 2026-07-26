@@ -6,7 +6,6 @@ import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
 import { R2Service } from '../media-storage/r2.service';
 import { TranscodeService } from './transcode.service';
-import { signHlsToken } from '../media-storage/hls-token';
 
 @Injectable()
 export class EpisodesService {
@@ -72,18 +71,15 @@ export class EpisodesService {
     };
 
     if (episode.videoProvider === 'r2_hls') {
-      // Self-hosted 4K HLS on R2, delivered through the Cloudflare Worker.
-      // The short-lived token authorises the whole prefix; the player
-      // appends it to every segment request (the Worker checks it).
-      const secret = this.config.get<string>('R2_HLS_TOKEN_SECRET');
-      if (!secret) {
-        throw new HttpException('R2 delivery not configured.', HttpStatus.SERVICE_UNAVAILABLE);
-      }
-      const hlsToken = signHlsToken(episode.r2Prefix!, secret, 3600);
+      // Self-hosted 4K HLS on R2, served from the bucket's public (r2.dev)
+      // URL — no Worker, no per-request cost. Playback is unauthenticated at
+      // the CDN layer (weaker protection, chosen deliberately for now); the
+      // app still gates the *link* behind entitlement + login above. To
+      // re-add signed protection later, deploy infra/r2-hls-worker and mint
+      // an hls token here (see signHlsToken / git history).
       return {
         provider: 'r2_hls' as const,
         playbackUrl: `https://${this.r2.publicHost}/${episode.r2Prefix}master.m3u8`,
-        hlsToken,
         expiresIn: 3600,
         ...meta,
       };
