@@ -2,10 +2,13 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@n
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { StaffGuard } from '../common/guards/staff.guard';
 import { UpsertTitleDto } from './dto/upsert-title.dto';
 import { EpisodesService } from '../episodes/episodes.service';
 
-@UseGuards(JwtAuthGuard, AdminGuard)
+// Staff (admin OR editor) can list/create/edit/publish. Delete stacks
+// AdminGuard on top (all guards must pass) so it stays admin-only.
+@UseGuards(JwtAuthGuard, StaffGuard)
 @Controller('admin/titles')
 export class AdminTitlesController {
   constructor(
@@ -99,6 +102,7 @@ export class AdminTitlesController {
     return { ...title, id: title.id.toString() };
   }
 
+  @UseGuards(AdminGuard) // admin-only: delete
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.prisma.title.delete({ where: { id: BigInt(id) } });

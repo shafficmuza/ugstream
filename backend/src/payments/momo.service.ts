@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { SecretsService } from '../common/secrets.service';
 
 /**
  * MTN Mobile Money Collections API (Request-to-Pay). Unlike Flutterwave/
@@ -19,11 +20,15 @@ import * as crypto from 'crypto';
 export class MomoService {
   private tokenCache: { token: string; expiresAt: number } | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly secrets: SecretsService,
+  ) {}
 
-  private mustGet(key: string): string {
-    const value = this.config.get<string>(key);
-    if (!value) throw new InternalServerErrorException(`Missing config: ${key}`);
+  // Credentials come from the admin-editable secrets store (DB → env).
+  private async mustGet(key: string): Promise<string> {
+    const value = await this.secrets.get(key);
+    if (!value) throw new InternalServerErrorException(`Missing payment credential: ${key}`);
     return value;
   }
 
@@ -46,9 +51,9 @@ export class MomoService {
       return this.tokenCache.token;
     }
 
-    const apiUser = this.mustGet('MOMO_API_USER');
-    const apiKey = this.mustGet('MOMO_API_KEY');
-    const subscriptionKey = this.mustGet('MOMO_SUBSCRIPTION_KEY');
+    const apiUser = await this.mustGet('MOMO_API_USER');
+    const apiKey = await this.mustGet('MOMO_API_KEY');
+    const subscriptionKey = await this.mustGet('MOMO_SUBSCRIPTION_KEY');
     const basic = Buffer.from(`${apiUser}:${apiKey}`).toString('base64');
 
     const res = await fetch(`${this.host}/collection/token/`, {
@@ -87,7 +92,7 @@ export class MomoService {
     payerMessage: string;
     payeeNote: string;
   }): Promise<{ referenceId: string }> {
-    const subscriptionKey = this.mustGet('MOMO_SUBSCRIPTION_KEY');
+    const subscriptionKey = await this.mustGet('MOMO_SUBSCRIPTION_KEY');
     const token = await this.getAccessToken();
     const referenceId = crypto.randomUUID();
 
@@ -124,7 +129,7 @@ export class MomoService {
 
   /** Poll target for a pending Request-to-Pay: PENDING | SUCCESSFUL | FAILED. */
   async getStatus(referenceId: string): Promise<{ status: 'PENDING' | 'SUCCESSFUL' | 'FAILED'; amount?: string; currency?: string }> {
-    const subscriptionKey = this.mustGet('MOMO_SUBSCRIPTION_KEY');
+    const subscriptionKey = await this.mustGet('MOMO_SUBSCRIPTION_KEY');
     const token = await this.getAccessToken();
 
     const res = await fetch(

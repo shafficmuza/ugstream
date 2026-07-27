@@ -9,10 +9,12 @@ interface AdminUser {
   id: string;
   phone: string;
   displayName: string | null;
-  role: 'user' | 'admin';
+  role: 'user' | 'editor' | 'admin';
   status: 'active' | 'banned';
   createdAt: string;
 }
+
+const ROLES: AdminUser['role'][] = ['user', 'editor', 'admin'];
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -25,14 +27,12 @@ export default function AdminUsersPage() {
 
   useEffect(load, []);
 
-  async function toggleRole(u: AdminUser) {
+  async function setRole(u: AdminUser, role: AdminUser['role']) {
+    if (role === u.role) return;
     const token = getAccessToken();
     if (!token) return;
-    await apiFetch(`/admin/users/${u.id}`, {
-      method: 'PATCH',
-      token,
-      body: { role: u.role === 'admin' ? 'user' : 'admin' },
-    });
+    if (role === 'admin' && !confirm(`Make ${u.phone} an ADMIN? They'll have full access, including deletes and payments.`)) return;
+    await apiFetch(`/admin/users/${u.id}`, { method: 'PATCH', token, body: { role } });
     load();
   }
 
@@ -69,9 +69,17 @@ export default function AdminUsersPage() {
               <td style={tdStyle}>{u.phone}</td>
               <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
               <td style={tdStyle}>
-                <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => toggleRole(u)}>
-                  {u.role}
-                </button>
+                <select
+                  value={u.role}
+                  onChange={(e) => setRole(u, e.target.value as AdminUser['role'])}
+                  style={{ padding: '4px 8px', fontSize: 12, background: '#1a1a1a', color: '#fff', border: '1px solid #333', borderRadius: 4 }}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td style={tdStyle}>
                 <button

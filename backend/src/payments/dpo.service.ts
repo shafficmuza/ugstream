@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SecretsService } from '../common/secrets.service';
 
 /**
  * DPO Pay (Direct Pay Online) via their v6 XML API. Two-step, hosted-page
@@ -15,28 +16,31 @@ import { ConfigService } from '@nestjs/config';
  */
 @Injectable()
 export class DpoService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly secrets: SecretsService,
+  ) {}
 
-  private mustGet(key: string): string {
-    const v = this.config.get<string>(key);
-    if (!v) throw new InternalServerErrorException(`Missing config: ${key}`);
+  private async cred(key: string): Promise<string> {
+    const v = await this.secrets.get(key);
+    if (!v) throw new InternalServerErrorException(`Missing payment credential: ${key}`);
     return v;
   }
 
-  get configured(): boolean {
-    return Boolean(this.config.get('DPO_COMPANY_TOKEN') && this.config.get('DPO_SERVICE_TYPE'));
+  async isConfigured(): Promise<boolean> {
+    return (await this.secrets.isSet('DPO_COMPANY_TOKEN')) && (await this.secrets.isSet('DPO_SERVICE_TYPE'));
   }
 
-  private get apiUrl(): string {
-    return this.config.get<string>('DPO_API_URL') ?? 'https://secure.3gdirectpay.com/API/v6/';
+  private async apiUrl(): Promise<string> {
+    return (await this.secrets.get('DPO_API_URL')) || 'https://secure.3gdirectpay.com/API/v6/';
   }
 
   private get payBase(): string {
     return this.config.get<string>('DPO_PAY_URL') ?? 'https://secure.3gdirectpay.com/payv2.php';
   }
 
-  get currency(): string {
-    return this.config.get<string>('DPO_CURRENCY') ?? 'UGX';
+  async currency(): Promise<string> {
+    return (await this.secrets.get('DPO_CURRENCY')) || 'UGX';
   }
 
   private tag(xml: string, name: string): string | undefined {
@@ -45,7 +49,7 @@ export class DpoService {
   }
 
   private async post(xml: string): Promise<string> {
-    const res = await fetch(this.apiUrl, {
+    const res = await fetch(await this.apiUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' },
       body: xml,
@@ -68,8 +72,9 @@ export class DpoService {
     email?: string;
     description: string;
   }): Promise<{ token: string; paymentUrl: string }> {
-    const companyToken = this.mustGet('DPO_COMPANY_TOKEN');
-    const serviceType = this.mustGet('DPO_SERVICE_TYPE');
+    const companyToken = await this.cred('DPO_COMPANY_TOKEN');
+    const serviceType = await this.cred('DPO_SERVICE_TYPE');
+    const currency = await this.currency();
     const serviceDate = new Date().toISOString().slice(0, 10).replace(/-/g, '/'); // YYYY/MM/DD
 
     const xml =
@@ -79,7 +84,7 @@ export class DpoService {
       `<Request>createToken</Request>` +
       `<Transaction>` +
       `<PaymentAmount>${params.amountUgx}</PaymentAmount>` +
-      `<PaymentCurrency>${this.currency}</PaymentCurrency>` +
+      `<PaymentCurrency>${currency}</PaymentCurrency>` +
       `<CompanyRef>${this.escape(params.companyRef)}</CompanyRef>` +
       `<RedirectURL>${this.escape(params.redirectUrl)}</RedirectURL>` +
       `<BackURL>${this.escape(params.backUrl)}</BackURL>` +
@@ -105,7 +110,7 @@ export class DpoService {
 
   /** Verify a transaction token: SUCCESSFUL | PENDING | FAILED. */
   async verifyToken(token: string): Promise<{ status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' }> {
-    const companyToken = this.mustGet('DPO_COMPANY_TOKEN');
+    const companyToken = await this.cred('DPO_COMPANY_TOKEN');
     const xml =
       `<?xml version="1.0" encoding="utf-8"?>` +
       `<API3G>` +

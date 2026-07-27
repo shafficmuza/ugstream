@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/c
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { StaffGuard } from '../common/guards/staff.guard';
 
 @Controller()
 export class GenresController {
@@ -12,7 +13,7 @@ export class GenresController {
     return this.prisma.genre.findMany({ orderBy: { name: 'asc' } });
   }
 
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(JwtAuthGuard, StaffGuard)
   @Get('admin/genres')
   async adminList() {
     const genres = await this.prisma.genre.findMany({
@@ -22,7 +23,7 @@ export class GenresController {
     return genres.map((g) => ({ ...g, titleCount: g._count.titles, _count: undefined }));
   }
 
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(JwtAuthGuard, StaffGuard)
   @Post('admin/genres')
   create(@Body() body: { name: string; slug: string }) {
     return this.prisma.genre.create({ data: body });

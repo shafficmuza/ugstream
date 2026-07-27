@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
 import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle } from '../shared';
 
 interface Genre {
@@ -17,6 +18,8 @@ function slugify(name: string) {
 }
 
 export default function AdminGenresPage() {
+  const { me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [genres, setGenres] = useState<Genre[] | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -85,9 +88,11 @@ export default function AdminGenresPage() {
               <td style={tdStyle}>{g.slug}</td>
               <td style={tdStyle}>{g.titleCount}</td>
               <td style={tdStyle}>
-                <button onClick={() => remove(g)} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}>
-                  Delete
-                </button>
+                {isAdmin && (
+                  <button onClick={() => remove(g)} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}>
+                    Delete
+                  </button>
+                )}
               </td>
             </tr>
           ))}

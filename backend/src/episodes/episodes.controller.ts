@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/comm
 import { EpisodesService } from './episodes.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { StaffGuard } from '../common/guards/staff.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 
 @UseGuards(JwtAuthGuard)
@@ -28,7 +29,7 @@ export class EpisodesController {
     return this.episodes.continueWatching(auth.userId);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes')
   createEpisode(
     @Param('titleId') titleId: string,
@@ -37,13 +38,13 @@ export class EpisodesController {
     return this.episodes.createForTitle(BigInt(titleId), body);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/:episodeId/upload-url')
   getUploadUrl(@Param('episodeId') episodeId: string) {
     return this.episodes.getUploadUrl(BigInt(episodeId));
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/:episodeId/tus-upload')
   getTusUploadUrl(
     @Param('episodeId') episodeId: string,
@@ -56,7 +57,7 @@ export class EpisodesController {
     );
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/import-url')
   importFromUrl(
     @Param('titleId') titleId: string,
@@ -78,7 +79,7 @@ export class EpisodesController {
 
   // --- Browser-direct 4K uploads to R2 (multipart presigned) --------------
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/multipart/create')
   r2MultipartCreate(
     @Body() body: { filename: string; contentType: string; purpose: 'source' | 'final' },
@@ -86,13 +87,13 @@ export class EpisodesController {
     return this.episodes.r2MultipartCreate(body.filename, body.contentType, body.purpose);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/multipart/sign-part')
   r2MultipartSignPart(@Body() body: { key: string; uploadId: string; partNumber: number }) {
     return this.episodes.r2MultipartSignPart(body.key, body.uploadId, body.partNumber);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/multipart/complete')
   r2MultipartComplete(
     @Body() body: { key: string; uploadId: string; parts: { PartNumber: number; ETag: string }[] },
@@ -100,14 +101,14 @@ export class EpisodesController {
     return this.episodes.r2MultipartComplete(body.key, body.uploadId, body.parts);
   }
 
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/multipart/abort')
   r2MultipartAbort(@Body() body: { key: string; uploadId: string }) {
     return this.episodes.r2MultipartAbort(body.key, body.uploadId);
   }
 
   /** Register an already-uploaded ready 4K file as a directly-served episode. */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/register-r2-file')
   registerR2File(
     @Param('titleId') titleId: string,
@@ -121,7 +122,7 @@ export class EpisodesController {
   }
 
   /** Transcode an already-uploaded R2 source into a 4K HLS ladder. */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/transcode-4k-r2')
   transcode4kFromR2(
     @Param('titleId') titleId: string,
@@ -137,21 +138,21 @@ export class EpisodesController {
   // --- Pre-made HLS ladder upload (locally-encoded adaptive folder) --------
 
   /** Mint a fresh R2 prefix for one ladder upload. */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/hls/begin')
   hlsBegin() {
     return this.episodes.hlsBegin();
   }
 
   /** Presign a PUT for every file in the ladder folder. */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/r2/hls/sign-batch')
   signHlsBatch(@Body() body: { prefix: string; files: { path: string }[] }) {
     return this.episodes.signHlsBatch(body.prefix, body.files);
   }
 
   /** Register the uploaded ladder as a ready adaptive episode. */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/register-r2-hls')
   registerR2Hls(
     @Param('titleId') titleId: string,
@@ -169,7 +170,7 @@ export class EpisodesController {
    * on R2 (Cloudflare Stream caps at 1080p). Returns immediately; the
    * episode reports `uploading` until the background transcode finishes.
    */
-  @UseGuards(AdminGuard)
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/transcode-4k')
   transcode4k(
     @Param('titleId') titleId: string,

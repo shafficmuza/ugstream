@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SecretsService } from '../common/secrets.service';
 
 /**
  * Yo! Payments (Uganda) mobile-money collections via their XML API.
@@ -14,20 +15,25 @@ import { ConfigService } from '@nestjs/config';
  */
 @Injectable()
 export class YoService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly secrets: SecretsService,
+  ) {}
 
-  private mustGet(key: string): string {
-    const v = this.config.get<string>(key);
-    if (!v) throw new InternalServerErrorException(`Missing config: ${key}`);
+  /** Credential from the admin-editable secrets store (DB → env). */
+  private async cred(key: string): Promise<string> {
+    const v = await this.secrets.get(key);
+    if (!v) throw new InternalServerErrorException(`Missing payment credential: ${key}`);
     return v;
   }
 
-  get configured(): boolean {
-    return Boolean(this.config.get('YO_API_USERNAME') && this.config.get('YO_API_PASSWORD'));
+  /** Whether both credentials are present (UI-entered or env). */
+  async isConfigured(): Promise<boolean> {
+    return (await this.secrets.isSet('YO_API_USERNAME')) && (await this.secrets.isSet('YO_API_PASSWORD'));
   }
 
-  private get apiUrl(): string {
-    return this.config.get<string>('YO_API_URL') ?? 'https://paymentsapi1.yo.co.ug/ybs/task.php';
+  private async apiUrl(): Promise<string> {
+    return (await this.secrets.get('YO_API_URL')) || 'https://paymentsapi1.yo.co.ug/ybs/task.php';
   }
 
   /** Minimal XML tag reader — Yo responses are flat, no nesting to speak of. */
@@ -37,7 +43,7 @@ export class YoService {
   }
 
   private async post(xml: string): Promise<string> {
-    const res = await fetch(this.apiUrl, {
+    const res = await fetch(await this.apiUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'text/xml', Accept: 'text/xml' },
       body: xml,
@@ -58,8 +64,8 @@ export class YoService {
     narrative: string;
     externalRef: string;
   }): Promise<{ transactionRef: string; status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' }> {
-    const username = this.mustGet('YO_API_USERNAME');
-    const password = this.mustGet('YO_API_PASSWORD');
+    const username = await this.cred('YO_API_USERNAME');
+    const password = await this.cred('YO_API_PASSWORD');
     const msisdn = params.msisdn.replace(/^\+/, ''); // digits only
 
     const xml =
@@ -87,8 +93,8 @@ export class YoService {
 
   /** Poll a transaction: PENDING | SUCCESSFUL | FAILED. */
   async getStatus(transactionRef: string): Promise<{ status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' }> {
-    const username = this.mustGet('YO_API_USERNAME');
-    const password = this.mustGet('YO_API_PASSWORD');
+    const username = await this.cred('YO_API_USERNAME');
+    const password = await this.cred('YO_API_PASSWORD');
 
     const xml =
       `<?xml version="1.0" encoding="UTF-8"?>` +

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
 import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle } from '../shared';
 
 interface Kind {
@@ -18,6 +19,8 @@ function slugify(name: string) {
 }
 
 export default function AdminKindsPage() {
+  const { me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [kinds, setKinds] = useState<Kind[] | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -103,19 +106,21 @@ export default function AdminKindsPage() {
                 <td style={tdStyle}>{k.slug}</td>
                 <td style={tdStyle}>{k.titleCount}</td>
                 <td style={tdStyle}>
-                  <button
-                    onClick={() => remove(k)}
-                    disabled={k.titleCount > 0}
-                    title={k.titleCount > 0 ? 'Reassign its titles before deleting' : 'Delete'}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: k.titleCount > 0 ? '#666' : '#ff6b6b',
-                      cursor: k.titleCount > 0 ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => remove(k)}
+                      disabled={k.titleCount > 0}
+                      title={k.titleCount > 0 ? 'Reassign its titles before deleting' : 'Delete'}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: k.titleCount > 0 ? '#666' : '#ff6b6b',
+                        cursor: k.titleCount > 0 ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

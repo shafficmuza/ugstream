@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { StaffGuard } from '../common/guards/staff.guard';
 
 /**
  * Title "kinds" (Movie, Series, Documentary, Music, …) as a runtime-managed
@@ -27,7 +28,7 @@ export class KindsController {
     return this.prisma.kind.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
   }
 
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(JwtAuthGuard, StaffGuard)
   @Get('admin/kinds')
   async adminList() {
     const [kinds, grouped] = await Promise.all([
@@ -38,7 +39,7 @@ export class KindsController {
     return kinds.map((k) => ({ ...k, titleCount: counts.get(k.slug) ?? 0 }));
   }
 
-  @UseGuards(JwtAuthGuard, AdminGuard)
+  @UseGuards(JwtAuthGuard, StaffGuard)
   @Post('admin/kinds')
   create(@Body() body: { name: string; slug: string; sortOrder?: number }) {
     if (!body?.name?.trim() || !body?.slug?.trim()) {

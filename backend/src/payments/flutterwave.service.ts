@@ -1,6 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { SecretsService } from '../common/secrets.service';
 
 /**
  * Flutterwave Standard checkout. Docs:
@@ -8,11 +8,12 @@ import * as crypto from 'crypto';
  */
 @Injectable()
 export class FlutterwaveService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly secrets: SecretsService) {}
 
-  private mustGet(key: string): string {
-    const value = this.config.get<string>(key);
-    if (!value) throw new InternalServerErrorException(`Missing config: ${key}`);
+  // Credentials from the admin-editable secrets store (DB → env).
+  private async mustGet(key: string): Promise<string> {
+    const value = await this.secrets.get(key);
+    if (!value) throw new InternalServerErrorException(`Missing payment credential: ${key}`);
     return value;
   }
 
@@ -23,10 +24,11 @@ export class FlutterwaveService {
     customerName?: string;
     redirectUrl: string;
   }): Promise<{ link: string }> {
+    const secretKey = await this.mustGet('FLUTTERWAVE_SECRET_KEY');
     const res = await fetch('https://api.flutterwave.com/v3/payments', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.mustGet('FLUTTERWAVE_SECRET_KEY')}`,
+        Authorization: `Bearer ${secretKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -54,9 +56,10 @@ export class FlutterwaveService {
     currency: string;
     txRef: string;
   }> {
+    const secretKey = await this.mustGet('FLUTTERWAVE_SECRET_KEY');
     const res = await fetch(
       `https://api.flutterwave.com/v3/transactions/${transactionId}/verify`,
-      { headers: { Authorization: `Bearer ${this.mustGet('FLUTTERWAVE_SECRET_KEY')}` } },
+      { headers: { Authorization: `Bearer ${secretKey}` } },
     );
     const json = await res.json();
     if (json.status !== 'success') {
@@ -71,8 +74,8 @@ export class FlutterwaveService {
   }
 
   /** Flutterwave sends a `verif-hash` header equal to your configured secret hash. */
-  verifyWebhookSignature(signatureHeader: string | undefined): boolean {
-    const expected = this.mustGet('FLUTTERWAVE_WEBHOOK_SECRET_HASH');
+  async verifyWebhookSignature(signatureHeader: string | undefined): Promise<boolean> {
+    const expected = await this.mustGet('FLUTTERWAVE_WEBHOOK_SECRET_HASH');
     if (!signatureHeader || signatureHeader.length !== expected.length) return false;
     return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected));
   }

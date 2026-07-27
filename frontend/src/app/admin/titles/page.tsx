@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
 import { tableStyle, thStyle, tdStyle } from '../shared';
 
 interface AdminTitle {
@@ -16,6 +17,8 @@ interface AdminTitle {
 }
 
 export default function AdminTitlesPage() {
+  const { me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [titles, setTitles] = useState<AdminTitle[] | null>(null);
 
   function load() {
@@ -83,12 +86,14 @@ export default function AdminTitlesPage() {
                 </button>
               </td>
               <td style={tdStyle}>
-                <button
-                  onClick={() => remove(t)}
-                  style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}
-                >
-                  Delete
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => remove(t)}
+                    style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer' }}
+                  >
+                    Delete
+                  </button>
+                )}
               </td>
             </tr>
           ))}

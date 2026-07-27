@@ -36,7 +36,7 @@ export class AdminUsersController {
   @Patch(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: Partial<{ role: 'user' | 'admin'; status: 'active' | 'banned'; displayName: string }>,
+    @Body() body: Partial<{ role: 'user' | 'editor' | 'admin'; status: 'active' | 'banned'; displayName: string }>,
   ) {
     const user = await this.prisma.user.update({ where: { id: BigInt(id) }, data: body });
     return { ...user, id: user.id.toString() };

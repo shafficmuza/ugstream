@@ -12,7 +12,7 @@ import { diskStorage } from 'multer';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { AdminGuard } from '../common/guards/admin.guard';
+import { StaffGuard } from '../common/guards/staff.guard';
 
 const IMAGE_DIR = path.join(process.cwd(), 'uploads', 'images');
 const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -23,7 +23,7 @@ const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
  * AppSettings — it just returns a URL for the caller to store wherever
  * it belongs (e.g. titles.posterUrl).
  */
-@UseGuards(JwtAuthGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, StaffGuard)
 @Controller('admin/media')
 export class MediaController {
   constructor(private readonly config: ConfigService) {}

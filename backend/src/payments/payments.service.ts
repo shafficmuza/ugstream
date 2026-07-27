@@ -7,6 +7,7 @@ import { StripeService } from './stripe.service';
 import { MomoService } from './momo.service';
 import { YoService } from './yo.service';
 import { DpoService } from './dpo.service';
+import { SecretsService } from '../common/secrets.service';
 
 /** Concrete payment processors. Card → stripe; the rest are mobile-money. */
 export type PaymentProvider = 'flutterwave' | 'stripe' | 'momo' | 'yo' | 'dpo';
@@ -32,6 +33,7 @@ export class PaymentsService {
     private readonly momo: MomoService,
     private readonly yo: YoService,
     private readonly dpo: DpoService,
+    private readonly secrets: SecretsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -59,10 +61,10 @@ export class PaymentsService {
     const mm = await this.activeMobileMoneyProvider();
     const configured: Record<PaymentProvider, boolean> = {
       stripe: Boolean(this.config.get('STRIPE_SECRET_KEY')),
-      flutterwave: Boolean(this.config.get('FLUTTERWAVE_SECRET_KEY')),
-      momo: Boolean(this.config.get('MOMO_API_USER')),
-      yo: this.yo.configured,
-      dpo: this.dpo.configured,
+      flutterwave: await this.secrets.isSet('FLUTTERWAVE_SECRET_KEY'),
+      momo: await this.secrets.isSet('MOMO_API_USER'),
+      yo: await this.yo.isConfigured(),
+      dpo: await this.dpo.isConfigured(),
     };
     return {
       methods: [

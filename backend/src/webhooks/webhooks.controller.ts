@@ -25,7 +25,7 @@ export class WebhooksController {
     @Headers('verif-hash') verifHash: string | undefined,
     @Body() body: any,
   ) {
-    if (!this.flutterwave.verifyWebhookSignature(verifHash)) {
+    if (!(await this.flutterwave.verifyWebhookSignature(verifHash))) {
       throw new BadRequestException('Invalid webhook signature.');
     }
 

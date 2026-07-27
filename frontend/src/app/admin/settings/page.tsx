@@ -34,6 +34,41 @@ export default function AdminSettingsPage() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [methods, setMethods] = useState<{ method: string; provider: string; enabled: boolean }[]>([]);
+  const [credProviders, setCredProviders] = useState<{ provider: string; keys: { key: string; set: boolean }[] }[]>([]);
+  const [credInputs, setCredInputs] = useState<Record<string, string>>({});
+  const [savingCreds, setSavingCreds] = useState(false);
+
+  function loadCredentials() {
+    const token = getAccessToken();
+    if (!token) return;
+    apiFetch<{ providers: { provider: string; keys: { key: string; set: boolean }[] }[] }>('/admin/payments/credentials', { token })
+      .then((r) => setCredProviders(r.providers))
+      .catch(() => setCredProviders([]));
+  }
+
+  async function saveCredentials() {
+    const token = getAccessToken();
+    if (!token) return;
+    const values = Object.fromEntries(Object.entries(credInputs).filter(([, v]) => v.trim() !== ''));
+    if (Object.keys(values).length === 0) {
+      setMessage('Nothing to save — type a value into a field first.');
+      return;
+    }
+    setSavingCreds(true);
+    setMessage(null);
+    try {
+      await apiFetch('/admin/payments/credentials', { method: 'POST', token, body: { values } });
+      setCredInputs({});
+      setMessage('Payment credentials saved.');
+      loadCredentials();
+      const r = await apiFetch<{ methods: typeof methods }>('/payments/methods', { token });
+      setMethods(r.methods);
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to save credentials.');
+    } finally {
+      setSavingCreds(false);
+    }
+  }
 
   useEffect(() => {
     apiFetch<AppSettings>('/settings').then((settings) => {
@@ -54,6 +89,7 @@ export default function AdminSettingsPage() {
       apiFetch<{ methods: { method: string; provider: string; enabled: boolean }[] }>('/payments/methods', { token })
         .then((r) => setMethods(r.methods))
         .catch(() => setMethods([]));
+      loadCredentials();
     }
   }, []);
 
@@ -230,11 +266,46 @@ export default function AdminSettingsPage() {
             <span style={{ opacity: 0.7, textTransform: 'capitalize' }}>{m.method.replace('_', ' ')}:</span>{' '}
             <b>{m.provider}</b>{' '}
             <span style={{ color: m.enabled ? '#3ddc84' : '#ffb020' }}>
-              {m.enabled ? '● credentials set' : '● credentials missing (set in .env)'}
+              {m.enabled ? '● credentials set' : '● credentials missing'}
             </span>
           </div>
         ))}
       </div>
+
+      <h3 style={{ fontSize: 14, marginTop: 24, marginBottom: 4 }}>Mobile money credentials</h3>
+      <p style={{ opacity: 0.6, fontSize: 12.5, marginBottom: 14 }}>
+        Enter each provider&apos;s API credentials here. Values are stored securely and never shown
+        back — a field left blank keeps its current value. (Card/Stripe keys stay in the server
+        environment by design.)
+      </p>
+
+      {credProviders.map((p) => (
+        <div key={p.provider} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, textTransform: 'capitalize' }}>{p.provider}</div>
+          {p.keys.map((k) => (
+            <div key={k.key} style={{ marginBottom: 8 }}>
+              <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{k.key}</span>
+                <span style={{ fontSize: 11, color: k.set ? '#3ddc84' : '#ffb020' }}>{k.set ? 'set' : 'not set'}</span>
+              </label>
+              <input
+                style={inputStyle}
+                type="password"
+                autoComplete="new-password"
+                placeholder={k.set ? '•••••••• (leave blank to keep)' : 'not set'}
+                value={credInputs[k.key] ?? ''}
+                onChange={(e) => setCredInputs((c) => ({ ...c, [k.key]: e.target.value }))}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {credProviders.length > 0 && (
+        <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={saveCredentials} disabled={savingCreds}>
+          {savingCreds ? 'Saving…' : 'Save payment credentials'}
+        </button>
+      )}
 
       {message && <p style={{ marginTop: 12, opacity: 0.8 }}>{message}</p>}
     </div>

@@ -38,8 +38,20 @@ model AppSettings {
   @@map("app_settings")
 }
 
+// Admin-editable secret values (payment API credentials, etc.), overriding
+// the corresponding env var. Read via SecretsService (DB → env fallback).
+// Values are never returned to the client — only a "configured" flag.
+model Secret {
+  key       String   @id @db.VarChar(60)
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("secrets")
+}
+
 enum UserRole {
   user
+  editor
   admin
 }
 
