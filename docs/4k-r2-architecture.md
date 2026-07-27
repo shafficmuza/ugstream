@@ -74,3 +74,22 @@ and the title plays back at true 4K.
 - No DRM (Widevine/FairPlay/PlayReady) — protection is signed URLs +
   segmenting, same as the Stream path. Add a DRM/license server later if
   licensed studio content requires it.
+
+## CORS (REQUIRED for hls.js playback)
+
+hls.js fetches every playlist and .ts segment via XHR, so the R2 bucket MUST
+send `Access-Control-Allow-Origin` for the app origin — otherwise the browser
+blocks all segment fetches and playback fails silently on every device (the
+`<video>`/master URL loads fine, but nothing plays). The public r2.dev domain
+sends NO CORS headers by default.
+
+Set the bucket CORS policy once (S3 PutBucketCors with the R2 keys):
+
+    AllowedOrigins: ['https://ham.sentepos.com', 'http://localhost:3000']
+    AllowedMethods: ['GET', 'HEAD']
+    AllowedHeaders:  ['*']
+    ExposeHeaders:   ['Content-Length', 'Content-Range', 'ETag']
+
+Verify:  curl -sI -H "Origin: https://ham.sentepos.com" \
+  https://<pub-host>.r2.dev/hls/ep-N/master.m3u8 | grep -i access-control
+Any NEW bucket used for HLS delivery needs this same policy applied.
