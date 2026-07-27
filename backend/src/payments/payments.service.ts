@@ -22,6 +22,9 @@ export interface CheckoutDto {
   method?: 'card' | 'mobile_money';
   // Back-compat / override: an explicit concrete processor.
   provider?: PaymentProvider;
+  // Mobile-money number to charge — lets the customer pay from a different
+  // line than the one they logged in with. Falls back to the login number.
+  payerPhone?: string;
 }
 
 @Injectable()
@@ -78,9 +81,23 @@ export class PaymentsService {
     return { momo: 'MTN Mobile Money', flutterwave: 'Flutterwave', yo: 'Yo! Payments', dpo: 'DPO Pay', stripe: 'Card' }[p];
   }
 
+  /** Normalise a Ugandan mobile-money number to 256XXXXXXXXX (no '+'). */
+  private normalizeUgPhone(input: string): string {
+    let n = input.replace(/[^\d]/g, '');
+    if (n.startsWith('0')) n = '256' + n.slice(1);
+    else if (n.length === 9) n = '256' + n; // e.g. 772123456
+    if (!/^256\d{9}$/.test(n)) {
+      throw new BadRequestException('Enter a valid Ugandan mobile money number, e.g. 0772123456.');
+    }
+    return n;
+  }
+
   async checkout(userId: bigint, dto: CheckoutDto) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const provider = await this.resolveProvider(dto);
+    // The number to charge for mobile money: the customer-entered one if
+    // given, else the account's login number.
+    const payerPhone = dto.payerPhone ? this.normalizeUgPhone(dto.payerPhone) : user.phone;
 
     let amountUgx: number;
     let planId: number | undefined;
@@ -146,7 +163,7 @@ export class PaymentsService {
       // EUR (test amounts, not a real conversion), production uses UGX.
       const { referenceId } = await this.momo.requestToPay({
         amount: amountUgx,
-        msisdn: user.phone,
+        msisdn: payerPhone,
         externalId: txRef,
         payerMessage: description,
         payeeNote: 'ugstream',
@@ -166,7 +183,7 @@ export class PaymentsService {
       // poll (same shape as MTN MoMo).
       const { transactionRef } = await this.yo.requestPayment({
         amount: amountUgx,
-        msisdn: user.phone,
+        msisdn: payerPhone,
         narrative: description,
         externalRef: txRef,
       });
@@ -189,7 +206,7 @@ export class PaymentsService {
         companyRef: txRef,
         redirectUrl: `${redirectBase}?status=success&tx_ref=${txRef}`,
         backUrl: `${redirectBase}?status=cancelled&tx_ref=${txRef}`,
-        phone: user.phone,
+        phone: payerPhone,
         description,
       });
       await this.prisma.payment.update({ where: { id: payment.id }, data: { providerTxId: token } });
@@ -204,7 +221,7 @@ export class PaymentsService {
     const { link } = await this.flutterwave.createCheckout({
       txRef,
       amountUgx,
-      phone: user.phone,
+      phone: payerPhone,
       customerName: user.displayName ?? undefined,
       redirectUrl: this.config.get('PAYMENTS_REDIRECT_URL')!,
     });
