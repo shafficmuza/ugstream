@@ -989,6 +989,10 @@ button {
   .nf-search.open input {
     width: 130px;
   }
+  /* Guide page: drop the sticky table-of-contents sidebar on narrow screens. */
+  .docs-toc {
+    display: none !important;
+  }
 }
 
 @media (max-width: 720px) {
