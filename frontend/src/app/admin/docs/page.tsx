@@ -23,7 +23,9 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: 'costs', label: '8. Cost strategies' },
   { id: 'kinds-genres', label: '9. Kinds & Genres' },
   { id: 'sections', label: '10. Admin sections' },
-  { id: 'trouble', label: '11. Troubleshooting' },
+  { id: 'roles', label: '11. Roles & access' },
+  { id: 'payments', label: '12. Payments setup' },
+  { id: 'trouble', label: '13. Troubleshooting' },
 ];
 
 function CopyButton({ text }: { text: string }) {
@@ -405,7 +407,52 @@ export default function AdminDocsPage() {
           </table>
         </Section>
 
-        <Section id="trouble" title="11. Troubleshooting">
+        <Section id="roles" title="11. Roles & access">
+          <p>There are two staff roles. Admins assign them in <b>Users</b> (role dropdown).</p>
+          <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 10 }}>
+            <thead>
+              <tr>
+                <th style={th}>Can…</th>
+                <th style={th}>Editor</th>
+                <th style={th}>Admin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td style={td}>Add / edit titles, upload video, publish</td><td style={td}>✅</td><td style={td}>✅</td></tr>
+              <tr><td style={td}>Add genres & kinds</td><td style={td}>✅</td><td style={td}>✅</td></tr>
+              <tr><td style={td}>View dashboard</td><td style={td}>✅</td><td style={td}>✅</td></tr>
+              <tr><td style={td}><b>Delete</b> anything (titles, genres, kinds…)</td><td style={td}>❌</td><td style={td}>✅</td></tr>
+              <tr><td style={td}>Settings, payments & credentials</td><td style={td}>❌</td><td style={td}>✅</td></tr>
+              <tr><td style={td}>Plans & pricing</td><td style={td}>❌</td><td style={td}>✅</td></tr>
+              <tr><td style={td}>Users & roles</td><td style={td}>❌</td><td style={td}>✅</td></tr>
+            </tbody>
+          </table>
+          <Callout kind="note">
+            To add a staff member: have them sign up normally (phone + code), then an admin opens{' '}
+            <b>Users</b>, finds their number, and sets their role to <b>editor</b>. Only admins can
+            create other admins, and <b>only admins can delete</b> anything.
+          </Callout>
+        </Section>
+
+        <Section id="payments" title="12. Payments setup (admins)">
+          <p>
+            Card payments always use <b>Stripe</b>. For <b>mobile money</b> you choose one active
+            processor — <b>MTN MoMo</b>, <b>Flutterwave</b>, <b>Yo! Payments</b>, or <b>DPO Pay</b> —
+            in <b>Settings → Payments</b>, switchable anytime with no redeploy.
+          </p>
+          <ol style={{ paddingLeft: 20, marginTop: 8 }}>
+            <li>Enter the provider&apos;s API credentials in the <b>Mobile money credentials</b> form (stored securely, never shown back).</li>
+            <li>Pick that provider in the <b>Mobile money provider</b> dropdown.</li>
+            <li>The status line should read <span style={{ color: '#3ddc84' }}>credentials set</span>.</li>
+          </ol>
+          <Callout kind="warn">
+            Yo! and DPO integrations are built to the providers&apos; APIs but must be tested with a
+            real (sandbox) transaction before going live. Test one small payment end-to-end after
+            entering credentials.
+          </Callout>
+        </Section>
+
+        <Section id="trouble" title="13. Troubleshooting">
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr><th style={th}>Symptom</th><th style={th}>Cause / fix</th></tr>
