@@ -34,6 +34,17 @@ async function bootstrap() {
     }),
   );
 
+  // Form-encoded bodies — payment IPNs (e.g. Yo! Payments) post
+  // application/x-www-form-urlencoded, which express.json() won't parse.
+  app.use(
+    express.urlencoded({
+      extended: true,
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+
   app.enableCors({
     origin: (process.env.CORS_ORIGINS ?? '').split(',').filter(Boolean),
     credentials: true,

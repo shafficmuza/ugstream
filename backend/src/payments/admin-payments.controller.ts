@@ -10,7 +10,7 @@ import { SecretsService } from '../common/secrets.service';
 const PROVIDER_KEYS: Record<string, string[]> = {
   momo: ['MOMO_API_USER', 'MOMO_API_KEY', 'MOMO_SUBSCRIPTION_KEY'],
   flutterwave: ['FLUTTERWAVE_SECRET_KEY', 'FLUTTERWAVE_WEBHOOK_SECRET_HASH'],
-  yo: ['YO_API_USERNAME', 'YO_API_PASSWORD', 'YO_API_URL'],
+  yo: ['YO_API_USERNAME', 'YO_API_PASSWORD', 'YO_API_URL', 'YO_IPN_URL'],
   dpo: ['DPO_COMPANY_TOKEN', 'DPO_SERVICE_TYPE', 'DPO_CURRENCY', 'DPO_API_URL'],
 };
 const ALL_KEYS = Object.values(PROVIDER_KEYS).flat();

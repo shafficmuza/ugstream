@@ -36,6 +36,12 @@ export class YoService {
     return (await this.secrets.get('YO_API_URL')) || 'https://paymentsapi1.yo.co.ug/ybs/task.php';
   }
 
+  /** Where Yo should POST the IPN for THIS project's transactions. Per-request
+   *  so a shared Yo account still notifies each project's own endpoint. */
+  private async ipnUrl(): Promise<string> {
+    return (await this.secrets.get('YO_IPN_URL')) || 'https://ham.sentepos.com/api/v1/webhooks/yo';
+  }
+
   /** Minimal XML tag reader — Yo responses are flat, no nesting to speak of. */
   private tag(xml: string, name: string): string | undefined {
     const m = xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, 'i'));
@@ -66,6 +72,7 @@ export class YoService {
   }): Promise<{ transactionRef: string; status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' }> {
     const username = await this.cred('YO_API_USERNAME');
     const password = await this.cred('YO_API_PASSWORD');
+    const ipn = await this.ipnUrl();
     const msisdn = params.msisdn.replace(/^\+/, ''); // digits only
 
     const xml =
@@ -79,6 +86,10 @@ export class YoService {
       `<Account>${msisdn}</Account>` +
       `<Narrative>${this.escape(params.narrative)}</Narrative>` +
       `<ExternalReference>${this.escape(params.externalRef)}</ExternalReference>` +
+      // Tell Yo to POST the IPN to this project's endpoint (both success and
+      // failure) — keeps a shared Yo account routing notifications per-project.
+      `<InstantNotificationUrl>${this.escape(ipn)}</InstantNotificationUrl>` +
+      `<FailureNotificationUrl>${this.escape(ipn)}</FailureNotificationUrl>` +
       `</Request></AutoCreate>`;
 
     const resp = await this.post(xml);

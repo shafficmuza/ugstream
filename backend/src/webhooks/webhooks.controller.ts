@@ -78,6 +78,30 @@ export class WebhooksController {
   }
 
   /**
+   * Yo! Payments IPN (Instant Payment Notification). Yo POSTs a
+   * form-encoded notification here when a deposit completes/fails. We only
+   * trust it enough to know WHICH transaction to look up, then re-verify the
+   * real status with Yo directly (same never-trust-the-body model as the
+   * Flutterwave webhook). Idempotent — replays are harmless.
+   *
+   * IPN URL to register with Yo (or set YO_IPN_URL): {API base}/webhooks/yo
+   * e.g. https://ham.sentepos.com/api/v1/webhooks/yo
+   */
+  @Post('yo')
+  async yoWebhook(@Body() body: any) {
+    // Yo's field naming varies by API version — accept the common variants.
+    const externalRef =
+      body?.external_ref ?? body?.external_reference ?? body?.ExternalReference ?? body?.externalReference;
+    const yoTxRef =
+      body?.transaction_reference ?? body?.TransactionReference ?? body?.transactionReference;
+    await this.payments.confirmYoIpn(
+      externalRef ? String(externalRef) : undefined,
+      yoTxRef ? String(yoTxRef) : undefined,
+    );
+    return { ok: true };
+  }
+
+  /**
    * Cloudflare Stream webhook — configured in the dashboard under
    * Stream > Webhooks. Fires when transcoding finishes or fails.
    * https://developers.cloudflare.com/stream/manage-video-library/using-webhooks/

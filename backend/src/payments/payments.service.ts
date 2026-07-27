@@ -311,6 +311,29 @@ export class PaymentsService {
   }
 
   /**
+   * Called from the Yo! Payments IPN. The notification only tells us which
+   * transaction changed; we re-verify the real status with Yo directly
+   * (never trust the IPN body) before granting. Idempotent.
+   */
+  async confirmYoIpn(externalRef?: string, yoTxRef?: string): Promise<void> {
+    if (!externalRef && !yoTxRef) return;
+    const payment = externalRef
+      ? await this.prisma.payment.findUnique({ where: { providerRef: externalRef } })
+      : await this.prisma.payment.findFirst({ where: { providerTxId: yoTxRef } });
+    if (!payment || payment.provider !== 'yo') return;
+    if (payment.status === 'successful') return; // already processed — idempotent
+
+    const ref = payment.providerTxId ?? yoTxRef;
+    if (!ref) return;
+    const result = await this.yo.getStatus(ref).catch(() => null);
+    if (result?.status === 'SUCCESSFUL') {
+      await this.grantEntitlement(payment.id, ref);
+    } else if (result?.status === 'FAILED') {
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'failed' } });
+    }
+  }
+
+  /**
    * Called from the Stripe webhook after signature verification (Stripe's
    * SDK already confirms the event is genuinely from Stripe, so unlike
    * Flutterwave there's no separate "re-verify with the provider" round
