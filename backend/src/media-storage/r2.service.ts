@@ -6,6 +6,7 @@ import {
   DeleteObjectsCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
+  HeadObjectCommand,
   CreateMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
@@ -85,6 +86,27 @@ export class R2Service {
   /** Public https URL for an object key, via the bucket's public host. */
   publicUrl(key: string): string {
     return `https://${this.publicHost}/${key}`;
+  }
+
+  /** Presigned PUT URL for a single object (browser uploads it directly).
+   *  ContentType is bound into the signature, so the client MUST send the
+   *  exact same Content-Type header — callers get it back to echo verbatim. */
+  presignPut(key: string, contentType: string): Promise<string> {
+    return getSignedUrl(
+      this.client(),
+      new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType }),
+      { expiresIn: 3600 },
+    );
+  }
+
+  /** True if an object exists (used to confirm master.m3u8 landed). */
+  async exists(key: string): Promise<boolean> {
+    try {
+      await this.client().send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // --- Browser-direct multipart upload (S3 presigned) ---------------------

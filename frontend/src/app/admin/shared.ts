@@ -88,6 +88,76 @@ function putPart(url: string, chunk: Blob, onChunkProgress: (loaded: number) => 
   });
 }
 
+/** PUT a whole object to its presigned URL (sends the bound Content-Type). */
+function putSigned(
+  url: string,
+  body: Blob,
+  contentType: string,
+  onProgress?: (loaded: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    if (contentType) xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => onProgress?.(e.loaded);
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed (HTTP ${xhr.status}).`));
+    xhr.onerror = () => reject(new Error('Network error uploading. Check R2 CORS allows PUT.'));
+    xhr.send(body);
+  });
+}
+
+/**
+ * Upload a pre-made HLS ladder (a folder of master.m3u8 + variant playlists +
+ * segments) to R2 under `prefix`, presigning every file and uploading them
+ * directly with a small concurrency pool. Bytes never touch our server.
+ */
+export async function uploadLadderToR2(
+  prefix: string,
+  entries: { path: string; file: File }[],
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  // Presign in chunks so one request doesn't carry thousands of paths.
+  const signed = new Map<string, { url: string; contentType: string }>();
+  for (let i = 0; i < entries.length; i += 200) {
+    const chunk = entries.slice(i, i + 200);
+    const res = await apiPost<{ path: string; url: string; contentType: string }[]>(
+      '/admin/r2/hls/sign-batch',
+      { prefix, files: chunk.map((e) => ({ path: e.path })) },
+    );
+    for (const r of res) signed.set(r.path, { url: r.url, contentType: r.contentType });
+  }
+
+  const totalBytes = entries.reduce((a, e) => a + e.file.size, 0) || 1;
+  let doneBytes = 0;
+  const inflight = new Map<string, number>();
+  const report = () => {
+    let live = 0;
+    for (const v of inflight.values()) live += v;
+    onProgress(Math.min(99, Math.round(((doneBytes + live) / totalBytes) * 100)));
+  };
+
+  let idx = 0;
+  async function worker() {
+    while (idx < entries.length) {
+      const e = entries[idx++];
+      const s = signed.get(e.path);
+      if (!s) throw new Error(`Missing presigned URL for ${e.path}`);
+      await putSigned(s.url, e.file, s.contentType, (loaded) => {
+        inflight.set(e.path, loaded);
+        report();
+      });
+      inflight.delete(e.path);
+      doneBytes += e.file.size;
+      report();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, entries.length) }, worker));
+  onProgress(100);
+}
+
 /**
  * Upload a (potentially very large) file straight from the browser to R2 in
  * parts via presigned URLs — bytes never touch our server, and there's no

@@ -222,6 +222,111 @@ export class EpisodesService {
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
+  // --- Pre-made HLS ladder upload (admin encodes locally, uploads folder) --
+
+  private static readonly HLS_PREFIX_RE = /^hls\/[a-zA-Z0-9._-]+\/$/;
+
+  private validateHlsPrefix(prefix: string): void {
+    if (!EpisodesService.HLS_PREFIX_RE.test(prefix)) {
+      throw new HttpException('Invalid upload prefix.', HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private assertSafeRelPath(path: string): void {
+    if (!path || path.startsWith('/') || path.includes('..') || !/^[a-zA-Z0-9._/-]+$/.test(path)) {
+      throw new HttpException(`Unsafe file path in ladder: ${path}`, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private hlsContentType(path: string): string {
+    const p = path.toLowerCase();
+    if (p.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
+    if (p.endsWith('.ts')) return 'video/mp2t';
+    if (p.endsWith('.m4s') || p.endsWith('.mp4')) return 'video/mp4';
+    if (p.endsWith('.vtt')) return 'text/vtt';
+    return 'application/octet-stream';
+  }
+
+  /** Mint a fresh R2 prefix for one ladder upload. */
+  hlsBegin() {
+    this.requireR2();
+    return { prefix: `hls/pre-${randomUUID()}/` };
+  }
+
+  /** Presign a PUT for every file in the ladder (browser uploads them direct). */
+  async signHlsBatch(prefix: string, files: { path: string }[]) {
+    this.requireR2();
+    this.validateHlsPrefix(prefix);
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new HttpException('No files to sign.', HttpStatus.BAD_REQUEST);
+    }
+    return Promise.all(
+      files.map(async (f) => {
+        this.assertSafeRelPath(f.path);
+        const contentType = this.hlsContentType(f.path);
+        const url = await this.r2.presignPut(`${prefix}${f.path}`, contentType);
+        return { path: f.path, url, contentType };
+      }),
+    );
+  }
+
+  /**
+   * Register an uploaded ladder as a ready adaptive episode. Confirms
+   * master.m3u8 actually landed, then derives duration from the playlist
+   * (summing EXTINF — no segment downloads).
+   */
+  async registerR2Hls(titleId: bigint, prefix: string, dto: { season?: number; number?: number; name?: string }) {
+    this.requireR2();
+    this.validateHlsPrefix(prefix);
+    const masterKey = `${prefix}master.m3u8`;
+    if (!(await this.r2.exists(masterKey))) {
+      throw new HttpException(
+        'master.m3u8 was not found in the uploaded folder. Your ladder must contain a master playlist named master.m3u8.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const durationSecs = await this.probeHlsDuration(this.r2.publicUrl(masterKey)).catch(() => null);
+    const episode = await this.prisma.episode.create({
+      data: {
+        titleId,
+        season: dto.season ?? 1,
+        number: dto.number ?? 1,
+        name: dto.name,
+        videoProvider: 'r2_hls',
+        r2Prefix: prefix,
+        cfStatus: 'ready',
+        durationSecs: durationSecs ? Math.round(durationSecs) : null,
+      },
+    });
+    return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
+  }
+
+  /** Sum EXTINF durations from the first variant playlist (no segment fetches). */
+  private async probeHlsDuration(masterUrl: string): Promise<number | null> {
+    const master = await (await fetch(masterUrl)).text();
+    const lines = master.split('\n').map((l) => l.trim());
+    let variant: string | undefined;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('#EXT-X-STREAM-INF')) {
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j] && !lines[j].startsWith('#')) {
+            variant = lines[j];
+            break;
+          }
+        }
+        break;
+      }
+    }
+    if (!variant) return null;
+    const variantText = await (await fetch(new URL(variant, masterUrl).toString())).text();
+    let total = 0;
+    for (const l of variantText.split('\n')) {
+      const m = l.match(/^#EXTINF:([0-9.]+)/);
+      if (m) total += parseFloat(m[1]);
+    }
+    return total || null;
+  }
+
   async saveProgress(userId: bigint, episodeId: bigint, positionSecs: number) {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');

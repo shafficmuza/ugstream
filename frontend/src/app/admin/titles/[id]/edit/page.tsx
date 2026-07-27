@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { TitleForm, emptyTitleForm, toUpsertPayload, TitleFormValues } from '../../title-form';
-import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle, uploadToR2 } from '../../../shared';
+import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle, uploadToR2, uploadLadderToR2 } from '../../../shared';
 
 interface Episode {
   id: string;
@@ -118,10 +118,73 @@ function EpisodesSection({
   const [importing, setImporting] = useState(false);
 
   // 4K-via-R2 upload panel state
-  const [r2Mode, setR2Mode] = useState<'file' | 'transcode'>('file');
+  const [r2Mode, setR2Mode] = useState<'file' | 'transcode' | 'ladder'>('file');
   const [r2Busy, setR2Busy] = useState(false);
   const [r2Progress, setR2Progress] = useState<number | null>(null);
   const [r2Phase, setR2Phase] = useState<string>('');
+
+  async function uploadLadder(fileList: FileList) {
+    const token = getAccessToken();
+    if (!token) return;
+    setError(null);
+    const files = Array.from(fileList);
+    // Strip the top-level folder the browser prepends to every path.
+    const rel = (f: File) => (f.webkitRelativePath || f.name).split('/').slice(1).join('/');
+
+    // Find the master playlist (the .m3u8 that lists variant streams).
+    let masterFile: File | null = null;
+    for (const f of files) {
+      if (f.name.toLowerCase().endsWith('.m3u8')) {
+        const text = await f.text();
+        if (text.includes('#EXT-X-STREAM-INF')) {
+          masterFile = f;
+          break;
+        }
+      }
+    }
+    if (!masterFile) {
+      setError(
+        'No master playlist found. Your folder must contain a master .m3u8 that lists the quality variants (contains #EXT-X-STREAM-INF). For a single-quality file, use "Ready 4K file" instead.',
+      );
+      return;
+    }
+
+    // Build the upload list: master → normalized "master.m3u8", everything
+    // else at its relative path. Skip the master's original path to avoid dupes.
+    const entries: { path: string; file: File }[] = [{ path: 'master.m3u8', file: masterFile }];
+    for (const f of files) {
+      if (f === masterFile) continue;
+      const p = rel(f);
+      if (!p || p === 'master.m3u8') continue;
+      entries.push({ path: p, file: f });
+    }
+
+    const s = kind === 'series' ? parseInt(season, 10) : 1;
+    const n = kind === 'series' ? parseInt(number, 10) : 1;
+    setR2Busy(true);
+    setR2Progress(0);
+    setR2Phase(`Uploading ${entries.length} files to R2…`);
+    try {
+      const { prefix } = await apiFetch<{ prefix: string }>('/admin/r2/hls/begin', {
+        method: 'POST',
+        token,
+      });
+      await uploadLadderToR2(prefix, entries, setR2Progress);
+      setR2Phase('Publishing…');
+      await apiFetch(`/admin/titles/${titleId}/episodes/register-r2-hls`, {
+        method: 'POST',
+        token,
+        body: { prefix, name: name || undefined, season: s, number: n },
+      });
+      onChange();
+    } catch (e: any) {
+      setError(e.message ?? 'Ladder upload failed.');
+    } finally {
+      setR2Busy(false);
+      setR2Progress(null);
+      setR2Phase('');
+    }
+  }
 
   async function upload4k(file: File) {
     const token = getAccessToken();
@@ -305,14 +368,28 @@ function EpisodesSection({
             <input
               type="radio"
               name="r2mode"
+              checked={r2Mode === 'ladder'}
+              onChange={() => setR2Mode('ladder')}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <b>Pre-made HLS ladder (adaptive, recommended)</b> — you encode the adaptive folder on
+              your own machine/VDS, then pick the whole folder here. Full multi-quality streaming,{' '}
+              <b>no server transcode</b>. The folder must contain <code>master.m3u8</code>.
+            </span>
+          </label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+            <input
+              type="radio"
+              name="r2mode"
               checked={r2Mode === 'transcode'}
               onChange={() => setR2Mode('transcode')}
               style={{ marginTop: 3 }}
             />
             <span>
-              <b>Transcode source (adaptive)</b> — upload any source; the server builds a Netflix-style
-              4K/1080/720/480 ladder. Accepts any codec, but transcoding is <b>slow on this server</b>
-              (can take hours for a long film); status shows “uploading” until it finishes.
+              <b>Transcode source (adaptive, slow)</b> — upload any source; <b>this server</b> builds
+              the ladder. Accepts any codec, but transcoding is <b>slow</b> (hours for a long film);
+              status shows “uploading” until it finishes. Prefer the pre-made ladder above.
             </span>
           </label>
         </div>
@@ -321,6 +398,20 @@ function EpisodesSection({
           <div style={{ fontSize: 13 }}>
             {r2Phase} {r2Progress != null && `${r2Progress}%`}
           </div>
+        ) : r2Mode === 'ladder' ? (
+          <input
+            type="file"
+            ref={(el) => {
+              // webkitdirectory isn't in React's input types; set it directly
+              // so this picker selects a whole folder (the HLS ladder).
+              if (el) {
+                el.setAttribute('webkitdirectory', '');
+                el.setAttribute('directory', '');
+              }
+            }}
+            title="Select the folder containing master.m3u8 + variant playlists + segments"
+            onChange={(e) => e.target.files?.length && uploadLadder(e.target.files)}
+          />
         ) : (
           <input
             type="file"

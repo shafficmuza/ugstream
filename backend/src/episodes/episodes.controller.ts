@@ -134,6 +134,36 @@ export class EpisodesController {
     });
   }
 
+  // --- Pre-made HLS ladder upload (locally-encoded adaptive folder) --------
+
+  /** Mint a fresh R2 prefix for one ladder upload. */
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/hls/begin')
+  hlsBegin() {
+    return this.episodes.hlsBegin();
+  }
+
+  /** Presign a PUT for every file in the ladder folder. */
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/hls/sign-batch')
+  signHlsBatch(@Body() body: { prefix: string; files: { path: string }[] }) {
+    return this.episodes.signHlsBatch(body.prefix, body.files);
+  }
+
+  /** Register the uploaded ladder as a ready adaptive episode. */
+  @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/register-r2-hls')
+  registerR2Hls(
+    @Param('titleId') titleId: string,
+    @Body() body: { prefix: string; name?: string; season?: number; number?: number },
+  ) {
+    return this.episodes.registerR2Hls(BigInt(titleId), body.prefix, {
+      season: body.season,
+      number: body.number,
+      name: body.name,
+    });
+  }
+
   /**
    * Self-hosted true-4K path: transcode a source URL into a 2160p HLS ladder
    * on R2 (Cloudflare Stream caps at 1080p). Returns immediately; the
