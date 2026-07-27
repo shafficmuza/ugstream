@@ -1,6 +1,9 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateSettingsDto {
+  @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
+  mobileMoneyProvider?: string;
+
   @IsOptional() @IsString() @MaxLength(80)
   appName?: string;
 

@@ -8,6 +8,12 @@ import { CurrentUser, AuthContext } from '../common/decorators/current-user.deco
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
+  /** Payment options the app/web should show (card + active mobile money). */
+  @Get('methods')
+  methods() {
+    return this.payments.paymentMethods();
+  }
+
   @Post('checkout')
   checkout(
     @CurrentUser() auth: AuthContext,
@@ -16,7 +22,8 @@ export class PaymentsController {
       purpose: 'subscription' | 'title';
       planId?: number;
       titleId?: string;
-      provider?: 'flutterwave' | 'stripe' | 'momo';
+      method?: 'card' | 'mobile_money';
+      provider?: 'flutterwave' | 'stripe' | 'momo' | 'yo' | 'dpo';
     },
   ) {
     return this.payments.checkout(auth.userId, body);

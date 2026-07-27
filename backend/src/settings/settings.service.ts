@@ -9,6 +9,7 @@ export interface UpdateSettingsInput {
   supportPhone?: string;
   heroBackgroundUrl?: string;
   authBackgroundUrl?: string;
+  mobileMoneyProvider?: string;
 }
 
 @Injectable()

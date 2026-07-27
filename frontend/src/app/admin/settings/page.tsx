@@ -9,7 +9,14 @@ import { labelStyle, inputStyle, uploadFile } from '../shared';
 type FormState = Pick<
   AppSettings,
   'appName' | 'tagline' | 'supportEmail' | 'supportPhone' | 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl'
->;
+> & { mobileMoneyProvider: string };
+
+const MOBILE_MONEY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'momo', label: 'MTN Mobile Money (direct)' },
+  { value: 'flutterwave', label: 'Flutterwave' },
+  { value: 'yo', label: 'Yo! Payments' },
+  { value: 'dpo', label: 'DPO Pay' },
+];
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState<FormState>({
@@ -20,11 +27,13 @@ export default function AdminSettingsPage() {
     logoUrl: null,
     heroBackgroundUrl: null,
     authBackgroundUrl: null,
+    mobileMoneyProvider: 'momo',
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [methods, setMethods] = useState<{ method: string; provider: string; enabled: boolean }[]>([]);
 
   useEffect(() => {
     apiFetch<AppSettings>('/settings').then((settings) => {
@@ -36,10 +45,32 @@ export default function AdminSettingsPage() {
         logoUrl: settings.logoUrl,
         heroBackgroundUrl: settings.heroBackgroundUrl,
         authBackgroundUrl: settings.authBackgroundUrl,
+        mobileMoneyProvider: settings.mobileMoneyProvider ?? 'momo',
       });
       setLoaded(true);
     });
+    const token = getAccessToken();
+    if (token) {
+      apiFetch<{ methods: { method: string; provider: string; enabled: boolean }[] }>('/payments/methods', { token })
+        .then((r) => setMethods(r.methods))
+        .catch(() => setMethods([]));
+    }
   }, []);
+
+  async function saveProvider(provider: string) {
+    const token = getAccessToken();
+    if (!token) return;
+    setForm((f) => ({ ...f, mobileMoneyProvider: provider }));
+    setMessage(null);
+    try {
+      await apiFetch('/admin/settings', { method: 'PATCH', token, body: { mobileMoneyProvider: provider } });
+      setMessage('Mobile money provider updated.');
+      const r = await apiFetch<{ methods: { method: string; provider: string; enabled: boolean }[] }>('/payments/methods', { token });
+      setMethods(r.methods);
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to update provider.');
+    }
+  }
 
   async function uploadImage(field: 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl', endpoint: string, file: File) {
     setUploading(field);
@@ -171,6 +202,38 @@ export default function AdminSettingsPage() {
             if (file) uploadImage('authBackgroundUrl', '/admin/settings/auth-background', file);
           }}
         />
+      </div>
+
+      <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>Payments</h2>
+      <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+        Card payments always use <b>Stripe</b>. Choose which processor handles <b>mobile money</b> —
+        takes effect immediately. Each provider&apos;s API credentials are set in the server&apos;s
+        environment (<code>.env</code>), not here.
+      </p>
+
+      <label style={labelStyle}>Mobile money provider</label>
+      <select
+        style={inputStyle}
+        value={form.mobileMoneyProvider}
+        onChange={(e) => saveProvider(e.target.value)}
+      >
+        {MOBILE_MONEY_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ marginTop: 12, marginBottom: 8 }}>
+        {methods.map((m) => (
+          <div key={m.method} style={{ fontSize: 13, marginBottom: 4 }}>
+            <span style={{ opacity: 0.7, textTransform: 'capitalize' }}>{m.method.replace('_', ' ')}:</span>{' '}
+            <b>{m.provider}</b>{' '}
+            <span style={{ color: m.enabled ? '#3ddc84' : '#ffb020' }}>
+              {m.enabled ? '● credentials set' : '● credentials missing (set in .env)'}
+            </span>
+          </div>
+        ))}
       </div>
 
       {message && <p style={{ marginTop: 12, opacity: 0.8 }}>{message}</p>}

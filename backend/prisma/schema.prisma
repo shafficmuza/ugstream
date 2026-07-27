@@ -28,6 +28,11 @@ model AppSettings {
   // admin wants to manage, but doesn't have to be.
   heroBackgroundUrl String?  @map("hero_background_url")
   authBackgroundUrl String?  @map("auth_background_url")
+  // Which mobile-money processor is active for mobile-money checkouts:
+  // 'momo' (MTN direct) | 'flutterwave' | 'yo' | 'dpo'. Card always goes to
+  // Stripe. Admin flips this in the UI; the actual API credentials live in
+  // env, never the DB.
+  mobileMoneyProvider String @default("momo") @map("mobile_money_provider") @db.VarChar(20)
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")

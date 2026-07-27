@@ -5,12 +5,22 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FlutterwaveService } from './flutterwave.service';
 import { StripeService } from './stripe.service';
 import { MomoService } from './momo.service';
+import { YoService } from './yo.service';
+import { DpoService } from './dpo.service';
+
+/** Concrete payment processors. Card → stripe; the rest are mobile-money. */
+export type PaymentProvider = 'flutterwave' | 'stripe' | 'momo' | 'yo' | 'dpo';
+const MOBILE_MONEY_PROVIDERS: PaymentProvider[] = ['momo', 'flutterwave', 'yo', 'dpo'];
 
 export interface CheckoutDto {
   purpose: 'subscription' | 'title';
   planId?: number;
   titleId?: string;
-  provider?: 'flutterwave' | 'stripe' | 'momo';
+  // Preferred (mobile-app friendly): the app just asks for 'card' or
+  // 'mobile_money' and the backend routes to the configured processor.
+  method?: 'card' | 'mobile_money';
+  // Back-compat / override: an explicit concrete processor.
+  provider?: PaymentProvider;
 }
 
 @Injectable()
@@ -20,12 +30,55 @@ export class PaymentsService {
     private readonly flutterwave: FlutterwaveService,
     private readonly stripe: StripeService,
     private readonly momo: MomoService,
+    private readonly yo: YoService,
+    private readonly dpo: DpoService,
     private readonly config: ConfigService,
   ) {}
 
+  /** The mobile-money processor an admin has activated (defaults to momo). */
+  private async activeMobileMoneyProvider(): Promise<PaymentProvider> {
+    const settings = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
+    const p = settings?.mobileMoneyProvider as PaymentProvider | undefined;
+    return p && MOBILE_MONEY_PROVIDERS.includes(p) ? p : 'momo';
+  }
+
+  /**
+   * Resolve the concrete processor for a checkout: 'card' → Stripe,
+   * 'mobile_money' → the admin-selected provider. An explicit `provider`
+   * still wins (back-compat), else default to the active mobile-money one.
+   */
+  private async resolveProvider(dto: CheckoutDto): Promise<PaymentProvider> {
+    if (dto.method === 'card') return 'stripe';
+    if (dto.method === 'mobile_money') return this.activeMobileMoneyProvider();
+    if (dto.provider) return dto.provider;
+    return this.activeMobileMoneyProvider();
+  }
+
+  /** What the app/web should render as available payment options. */
+  async paymentMethods() {
+    const mm = await this.activeMobileMoneyProvider();
+    const configured: Record<PaymentProvider, boolean> = {
+      stripe: Boolean(this.config.get('STRIPE_SECRET_KEY')),
+      flutterwave: Boolean(this.config.get('FLUTTERWAVE_SECRET_KEY')),
+      momo: Boolean(this.config.get('MOMO_API_USER')),
+      yo: this.yo.configured,
+      dpo: this.dpo.configured,
+    };
+    return {
+      methods: [
+        { method: 'card', provider: 'stripe', enabled: configured.stripe },
+        { method: 'mobile_money', provider: mm, enabled: configured[mm], label: this.providerLabel(mm) },
+      ],
+    };
+  }
+
+  private providerLabel(p: PaymentProvider): string {
+    return { momo: 'MTN Mobile Money', flutterwave: 'Flutterwave', yo: 'Yo! Payments', dpo: 'DPO Pay', stripe: 'Card' }[p];
+  }
+
   async checkout(userId: bigint, dto: CheckoutDto) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const provider = dto.provider ?? 'flutterwave';
+    const provider = await this.resolveProvider(dto);
 
     let amountUgx: number;
     let planId: number | undefined;
@@ -77,7 +130,12 @@ export class PaymentsService {
       // 2026-07-22 incident notes in grantEntitlement's neighbor,
       // confirmStripeSession, and deploy/README.md bug #10.
       await this.prisma.payment.update({ where: { id: payment.id }, data: { providerTxId: sessionId } });
-      return { paymentId: payment.id.toString(), checkoutUrl: url };
+      return {
+        paymentId: payment.id.toString(),
+        provider,
+        checkoutUrl: url,
+        action: { type: 'redirect' as const, url },
+      };
     }
 
     if (provider === 'momo') {
@@ -92,7 +150,53 @@ export class PaymentsService {
         payeeNote: 'ugstream',
       });
       await this.prisma.payment.update({ where: { id: payment.id }, data: { providerTxId: referenceId } });
-      return { paymentId: payment.id.toString(), checkoutUrl: null, requiresPhoneApproval: true };
+      return {
+        paymentId: payment.id.toString(),
+        provider,
+        checkoutUrl: null,
+        requiresPhoneApproval: true,
+        action: { type: 'phone_prompt' as const },
+      };
+    }
+
+    if (provider === 'yo') {
+      // Yo! Payments deposit — an approval prompt goes to the phone, then we
+      // poll (same shape as MTN MoMo).
+      const { transactionRef } = await this.yo.requestPayment({
+        amount: amountUgx,
+        msisdn: user.phone,
+        narrative: description,
+        externalRef: txRef,
+      });
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { providerTxId: transactionRef } });
+      return {
+        paymentId: payment.id.toString(),
+        provider,
+        checkoutUrl: null,
+        requiresPhoneApproval: true,
+        action: { type: 'phone_prompt' as const },
+      };
+    }
+
+    if (provider === 'dpo') {
+      // DPO Pay — hosted payment page (like Flutterwave/Stripe); confirmed by
+      // verifyToken on status poll.
+      const redirectBase = this.config.get<string>('PAYMENTS_REDIRECT_URL')!;
+      const { token, paymentUrl } = await this.dpo.createCheckout({
+        amountUgx,
+        companyRef: txRef,
+        redirectUrl: `${redirectBase}?status=success&tx_ref=${txRef}`,
+        backUrl: `${redirectBase}?status=cancelled&tx_ref=${txRef}`,
+        phone: user.phone,
+        description,
+      });
+      await this.prisma.payment.update({ where: { id: payment.id }, data: { providerTxId: token } });
+      return {
+        paymentId: payment.id.toString(),
+        provider,
+        checkoutUrl: paymentUrl,
+        action: { type: 'redirect' as const, url: paymentUrl },
+      };
     }
 
     const { link } = await this.flutterwave.createCheckout({
@@ -103,7 +207,12 @@ export class PaymentsService {
       redirectUrl: this.config.get('PAYMENTS_REDIRECT_URL')!,
     });
 
-    return { paymentId: payment.id.toString(), checkoutUrl: link };
+    return {
+      paymentId: payment.id.toString(),
+      provider,
+      checkoutUrl: link,
+      action: { type: 'redirect' as const, url: link },
+    };
   }
 
   async getStatus(userId: bigint, paymentId: bigint) {
@@ -130,6 +239,31 @@ export class PaymentsService {
     // fallback for a missed webhook.
     if (payment.provider === 'momo' && payment.status === 'pending' && payment.providerTxId) {
       const result = await this.momo.getStatus(payment.providerTxId).catch(() => null);
+      if (result?.status === 'SUCCESSFUL') {
+        await this.grantEntitlement(payment.id, payment.providerTxId);
+        payment = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      } else if (result?.status === 'FAILED') {
+        await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'failed' } });
+        payment = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      }
+    }
+
+    // Yo! Payments — no signed webhook, so polling here is the confirmation
+    // path (same pattern as MoMo).
+    if (payment.provider === 'yo' && payment.status === 'pending' && payment.providerTxId) {
+      const result = await this.yo.getStatus(payment.providerTxId).catch(() => null);
+      if (result?.status === 'SUCCESSFUL') {
+        await this.grantEntitlement(payment.id, payment.providerTxId);
+        payment = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      } else if (result?.status === 'FAILED') {
+        await this.prisma.payment.update({ where: { id: payment.id }, data: { status: 'failed' } });
+        payment = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      }
+    }
+
+    // DPO Pay — confirm by verifying the transaction token directly.
+    if (payment.provider === 'dpo' && payment.status === 'pending' && payment.providerTxId) {
+      const result = await this.dpo.verifyToken(payment.providerTxId).catch(() => null);
       if (result?.status === 'SUCCESSFUL') {
         await this.grantEntitlement(payment.id, payment.providerTxId);
         payment = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });

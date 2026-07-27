@@ -12,58 +12,90 @@ interface Plan {
   durationDays: number;
 }
 
+interface CheckoutResponse {
+  paymentId: string;
+  provider?: string;
+  checkoutUrl?: string | null;
+  requiresPhoneApproval?: boolean;
+  action?: { type: 'redirect' | 'phone_prompt' | 'none'; url?: string };
+}
+
+interface PayMethod {
+  method: 'card' | 'mobile_money';
+  provider: string;
+  enabled: boolean;
+  label?: string;
+}
+
 export default function SubscribePage() {
   const router = useRouter();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [redirecting, setRedirecting] = useState<string | null>(null);
+  const [methods, setMethods] = useState<PayMethod[]>([]);
   const [momoWait, setMomoWait] = useState<{ planName: string; status: 'waiting' | 'success' | 'failed' } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     apiFetch<Plan[]>('/plans').then(setPlans).catch(() => setPlans([]));
+    const token = getAccessToken();
+    if (token) {
+      apiFetch<{ methods: PayMethod[] }>('/payments/methods', { token })
+        .then((r) => setMethods(r.methods))
+        .catch(() => setMethods([]));
+    }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
-  // Flutterwave button hidden for now — not configured yet (no secret key).
-  // The 'flutterwave' provider code path itself is untouched, just not
-  // exposed here; re-enable once it's actually live.
-  async function subscribeRedirect(planId: number, provider: 'stripe') {
+  const cardMethod = methods.find((m) => m.method === 'card');
+  const mmMethod = methods.find((m) => m.method === 'mobile_money');
+
+  async function payByCard(planId: number) {
     const token = getAccessToken();
     if (!token) return;
-    setRedirecting(`${planId}-${provider}`);
-    const res = await apiFetch<{ paymentId: string; checkoutUrl: string }>('/payments/checkout', {
+    setRedirecting(`${planId}-card`);
+    const res = await apiFetch<CheckoutResponse>('/payments/checkout', {
       method: 'POST',
       token,
-      body: { purpose: 'subscription', planId, provider },
+      body: { purpose: 'subscription', planId, method: 'card' },
     });
     sessionStorage.setItem('ugstream_pending_payment_id', res.paymentId);
-    window.location.href = res.checkoutUrl;
+    window.location.href = res.checkoutUrl!;
   }
 
-  // MTN MoMo has no hosted checkout page — it pushes an approval prompt
-  // straight to the customer's phone, so instead of redirecting we poll
-  // our own payment-status endpoint right here until they approve (or it
-  // fails/times out).
-  async function subscribeMomo(plan: Plan) {
+  // Mobile money routes to whichever provider the admin activated. Two shapes:
+  // a redirect (DPO / Flutterwave hosted page) or a phone approval prompt
+  // (MTN MoMo / Yo) that we poll for. The response's `action` tells us which.
+  async function payByMobileMoney(plan: Plan) {
     const token = getAccessToken();
     if (!token) return;
-    setMomoWait({ planName: plan.name, status: 'waiting' });
 
-    let paymentId: string;
+    let res: CheckoutResponse;
     try {
-      const res = await apiFetch<{ paymentId: string }>('/payments/checkout', {
+      setRedirecting(`${plan.id}-mm`);
+      res = await apiFetch<CheckoutResponse>('/payments/checkout', {
         method: 'POST',
         token,
-        body: { purpose: 'subscription', planId: plan.id, provider: 'momo' },
+        body: { purpose: 'subscription', planId: plan.id, method: 'mobile_money' },
       });
-      paymentId = res.paymentId;
-    } catch (e: any) {
+    } catch {
+      setRedirecting(null);
       setMomoWait({ planName: plan.name, status: 'failed' });
       return;
     }
+    setRedirecting(null);
 
+    // Hosted-page providers → redirect the customer to pay.
+    if (res.action?.type === 'redirect' && res.checkoutUrl) {
+      sessionStorage.setItem('ugstream_pending_payment_id', res.paymentId);
+      window.location.href = res.checkoutUrl;
+      return;
+    }
+
+    // Phone-approval providers → poll our status endpoint until they approve.
+    setMomoWait({ planName: plan.name, status: 'waiting' });
+    const paymentId = res.paymentId;
     let attempts = 0;
     pollRef.current = setInterval(async () => {
       attempts += 1;
@@ -93,7 +125,7 @@ export default function SubscribePage() {
           <>
             <h1 style={{ fontSize: 20 }}>Check your phone</h1>
             <p style={{ opacity: 0.8 }}>
-              Approve the {momoWait.planName} payment on your phone — enter your MTN Mobile Money PIN when
+              Approve the {momoWait.planName} payment on your phone — enter your Mobile Money PIN when
               prompted.
             </p>
           </>
@@ -134,17 +166,21 @@ export default function SubscribePage() {
             <div style={{ fontWeight: 700 }}>UGX {p.priceUgx.toLocaleString()}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button className="btn" style={{ flex: 1 }} disabled={!!redirecting} onClick={() => subscribeMomo(p)}>
-              MTN MoMo
-            </button>
-            <button
-              className="btn"
-              style={{ flex: 1, background: '#2c3e50' }}
-              disabled={!!redirecting}
-              onClick={() => subscribeRedirect(p.id, 'stripe')}
-            >
-              {redirecting === `${p.id}-stripe` ? 'Redirecting…' : 'Pay by Card'}
-            </button>
+            {(!mmMethod || mmMethod.enabled) && (
+              <button className="btn" style={{ flex: 1 }} disabled={!!redirecting} onClick={() => payByMobileMoney(p)}>
+                {redirecting === `${p.id}-mm` ? 'Starting…' : mmMethod?.label ?? 'Mobile Money'}
+              </button>
+            )}
+            {(!cardMethod || cardMethod.enabled) && (
+              <button
+                className="btn"
+                style={{ flex: 1, background: '#2c3e50' }}
+                disabled={!!redirecting}
+                onClick={() => payByCard(p.id)}
+              >
+                {redirecting === `${p.id}-card` ? 'Redirecting…' : 'Pay by Card'}
+              </button>
+            )}
           </div>
         </div>
       ))}
