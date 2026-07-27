@@ -9,7 +9,7 @@ import { WatchPlayer } from './watch-player';
 interface PlaybackInfo {
   playbackUrl: string;
   resumeAt: number;
-  provider?: 'cloudflare' | 'r2_hls';
+  provider?: 'cloudflare' | 'r2_hls' | 'r2_file';
   hlsToken?: string;
   title?: { name: string; slug: string; kind: string };
   episode?: { season: number; number: number; name: string | null };

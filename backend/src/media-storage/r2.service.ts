@@ -4,8 +4,14 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectsCommand,
+  DeleteObjectCommand,
   ListObjectsV2Command,
+  CreateMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 
@@ -74,6 +80,63 @@ export class R2Service {
         ContentType: contentType,
       }),
     );
+  }
+
+  /** Public https URL for an object key, via the bucket's public host. */
+  publicUrl(key: string): string {
+    return `https://${this.publicHost}/${key}`;
+  }
+
+  // --- Browser-direct multipart upload (S3 presigned) ---------------------
+  // Large 4K files upload straight from the browser to R2 in parts, so the
+  // VPS never buffers the file and there's no single-PUT (5GB) ceiling. The
+  // backend only mints presigned URLs and finalises — bytes never touch it.
+
+  /** Begin a multipart upload; returns the S3 uploadId to thread through. */
+  async createMultipart(key: string, contentType: string): Promise<string> {
+    const out = await this.client().send(
+      new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: contentType }),
+    );
+    if (!out.UploadId) throw new InternalServerErrorException('R2 did not return an UploadId.');
+    return out.UploadId;
+  }
+
+  /** Presigned PUT URL for one part (browser uploads the bytes directly). */
+  presignUploadPart(key: string, uploadId: string, partNumber: number): Promise<string> {
+    return getSignedUrl(
+      this.client(),
+      new UploadPartCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }),
+      { expiresIn: 3600 },
+    );
+  }
+
+  /** Finalise the upload from the parts' ETags (order matters). */
+  async completeMultipart(
+    key: string,
+    uploadId: string,
+    parts: { PartNumber: number; ETag: string }[],
+  ): Promise<void> {
+    await this.client().send(
+      new CompleteMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: { Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber) },
+      }),
+    );
+  }
+
+  async abortMultipart(key: string, uploadId: string): Promise<void> {
+    await this.client()
+      .send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId }))
+      .catch(() => undefined);
+  }
+
+  /** Delete a single object (e.g. a transcode's temporary source file). */
+  async deleteObject(key: string): Promise<void> {
+    await this.client()
+      .send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+      .catch(() => undefined);
   }
 
   /** Deletes every object under a prefix (an episode's whole HLS tree). */

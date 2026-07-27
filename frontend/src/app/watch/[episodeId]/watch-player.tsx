@@ -82,7 +82,13 @@ export function WatchPlayer({
       return url.includes('t=') ? url : `${url}${url.includes('?') ? '&' : '?'}t=${hlsToken}`;
     };
 
-    if (Hls.isSupported()) {
+    // A single progressive file (r2_file path — a ready-made 4K MP4) isn't an
+    // HLS manifest, so hls.js can't play it; point the <video> straight at it.
+    const isHls = src.includes('.m3u8');
+
+    if (!isHls) {
+      video.src = src;
+    } else if (Hls.isSupported()) {
       class TokenLoader extends Hls.DefaultConfig.loader {
         load(context: any, config: any, callbacks: any) {
           if (context?.url) context.url = withToken(context.url);

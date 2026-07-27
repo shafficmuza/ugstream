@@ -12,7 +12,7 @@ export class TitlesController {
 
   @Get('titles')
   browse(
-    @Query('kind') kind?: 'movie' | 'series',
+    @Query('kind') kind?: string,
     @Query('genre') genre?: string,
     @Query('language') language?: string,
     @Query('q') q?: string,

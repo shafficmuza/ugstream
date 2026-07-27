@@ -7,6 +7,7 @@ import { JwtGlobalModule } from './common/jwt-global.module';
 import { AuthModule } from './auth/auth.module';
 import { TitlesModule } from './titles/titles.module';
 import { GenresModule } from './genres/genres.module';
+import { KindsModule } from './kinds/kinds.module';
 import { EpisodesModule } from './episodes/episodes.module';
 import { PlansModule } from './plans/plans.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -24,6 +25,7 @@ import { AdminModule } from './admin/admin.module';
     AuthModule,
     TitlesModule,
     GenresModule,
+    KindsModule,
     EpisodesModule,
     PlansModule,
     PaymentsModule,

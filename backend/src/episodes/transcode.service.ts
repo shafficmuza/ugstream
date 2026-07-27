@@ -41,8 +41,8 @@ export class TranscodeService {
    * above the source resolution are skipped by ffmpeg's scale (never
    * upscales). Long-running — invoked detached from the request.
    */
-  startTranscode(episodeId: bigint, sourceUrl: string): void {
-    this.runTranscode(episodeId, sourceUrl).catch((err) => {
+  startTranscode(episodeId: bigint, sourceUrl: string, cleanupKey?: string): void {
+    this.runTranscode(episodeId, sourceUrl, cleanupKey).catch((err) => {
       this.logger.error(`Transcode failed for episode ${episodeId}: ${err?.message ?? err}`);
       this.prisma.episode
         .update({ where: { id: episodeId }, data: { cfStatus: 'error' } })
@@ -50,7 +50,7 @@ export class TranscodeService {
     });
   }
 
-  private async runTranscode(episodeId: bigint, sourceUrl: string): Promise<void> {
+  private async runTranscode(episodeId: bigint, sourceUrl: string, cleanupKey?: string): Promise<void> {
     const prefix = `hls/ep-${episodeId}/`;
     const workDir = await mkdtemp(join(tmpdir(), `hls-${episodeId}-`));
     this.logger.log(`Transcoding episode ${episodeId} → ${workDir}`);
@@ -67,6 +67,9 @@ export class TranscodeService {
       this.logger.log(`Episode ${episodeId} ready (4K HLS on R2, ${prefix})`);
     } finally {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+      // The raw source (uploaded to R2 only to feed ffmpeg) is no longer
+      // needed once the ladder is built — drop it so it doesn't cost storage.
+      if (cleanupKey) await this.r2.deleteObject(cleanupKey).catch(() => undefined);
     }
   }
 

@@ -87,9 +87,17 @@ model Session {
   @@map("sessions")
 }
 
-enum TitleKind {
-  movie
-  series
+// NOTE: `kind` on Title is a plain String (not an enum) so admins can add
+// their own kinds at runtime via the managed `Kind` table below — see
+// KindsController. Existing values ('movie', 'series') are preserved.
+model Kind {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  slug      String   @unique @db.VarChar(60)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("kinds")
 }
 
 enum TitleAccess {
@@ -101,7 +109,7 @@ enum TitleAccess {
 
 model Title {
   id           BigInt       @id @default(autoincrement())
-  kind         TitleKind
+  kind         String       @default("movie") @db.VarChar(60)
   name         String       @db.VarChar(200)
   slug         String       @unique @db.VarChar(220)
   description  String?

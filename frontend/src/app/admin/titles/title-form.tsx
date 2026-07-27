@@ -8,8 +8,14 @@ export interface Genre {
   name: string;
 }
 
+export interface Kind {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface TitleFormValues {
-  kind: 'movie' | 'series';
+  kind: string;
   name: string;
   slug: string;
   description: string;
@@ -58,14 +64,20 @@ export function TitleForm({
   slugEditable?: boolean;
 }) {
   const [genres, setGenres] = useState<Genre[]>([]);
+  const [kinds, setKinds] = useState<Kind[]>([]);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1'}/genres`)
+    const base = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+    fetch(`${base}/genres`)
       .then((r) => r.json())
       .then(setGenres)
       .catch(() => setGenres([]));
+    fetch(`${base}/kinds`)
+      .then((r) => r.json())
+      .then(setKinds)
+      .catch(() => setKinds([]));
   }, []);
 
   function set<K extends keyof TitleFormValues>(key: K, val: TitleFormValues[K]) {
@@ -95,13 +107,15 @@ export function TitleForm({
   return (
     <div style={{ maxWidth: 560 }}>
       <label style={labelStyle}>Kind</label>
-      <select
-        style={inputStyle}
-        value={value.kind}
-        onChange={(e) => set('kind', e.target.value as 'movie' | 'series')}
-      >
-        <option value="movie">Movie</option>
-        <option value="series">Series</option>
+      <select style={inputStyle} value={value.kind} onChange={(e) => set('kind', e.target.value)}>
+        {/* Fall back to the current value if the kinds list hasn't loaded yet,
+            so an existing title's kind isn't silently blanked on edit. */}
+        {kinds.length === 0 && value.kind && <option value={value.kind}>{value.kind}</option>}
+        {kinds.map((k) => (
+          <option key={k.id} value={k.slug}>
+            {k.name}
+          </option>
+        ))}
       </select>
 
       <label style={labelStyle}>Name</label>

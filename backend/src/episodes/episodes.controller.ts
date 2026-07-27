@@ -76,6 +76,64 @@ export class EpisodesController {
     return this.episodes.cleanupOrphans();
   }
 
+  // --- Browser-direct 4K uploads to R2 (multipart presigned) --------------
+
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/multipart/create')
+  r2MultipartCreate(
+    @Body() body: { filename: string; contentType: string; purpose: 'source' | 'final' },
+  ) {
+    return this.episodes.r2MultipartCreate(body.filename, body.contentType, body.purpose);
+  }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/multipart/sign-part')
+  r2MultipartSignPart(@Body() body: { key: string; uploadId: string; partNumber: number }) {
+    return this.episodes.r2MultipartSignPart(body.key, body.uploadId, body.partNumber);
+  }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/multipart/complete')
+  r2MultipartComplete(
+    @Body() body: { key: string; uploadId: string; parts: { PartNumber: number; ETag: string }[] },
+  ) {
+    return this.episodes.r2MultipartComplete(body.key, body.uploadId, body.parts);
+  }
+
+  @UseGuards(AdminGuard)
+  @Post('admin/r2/multipart/abort')
+  r2MultipartAbort(@Body() body: { key: string; uploadId: string }) {
+    return this.episodes.r2MultipartAbort(body.key, body.uploadId);
+  }
+
+  /** Register an already-uploaded ready 4K file as a directly-served episode. */
+  @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/register-r2-file')
+  registerR2File(
+    @Param('titleId') titleId: string,
+    @Body() body: { key: string; name?: string; season?: number; number?: number },
+  ) {
+    return this.episodes.registerR2File(BigInt(titleId), body.key, {
+      season: body.season,
+      number: body.number,
+      name: body.name,
+    });
+  }
+
+  /** Transcode an already-uploaded R2 source into a 4K HLS ladder. */
+  @UseGuards(AdminGuard)
+  @Post('admin/titles/:titleId/episodes/transcode-4k-r2')
+  transcode4kFromR2(
+    @Param('titleId') titleId: string,
+    @Body() body: { key: string; name?: string; season?: number; number?: number },
+  ) {
+    return this.episodes.transcode4kFromR2(BigInt(titleId), body.key, {
+      season: body.season,
+      number: body.number,
+      name: body.name,
+    });
+  }
+
   /**
    * Self-hosted true-4K path: transcode a source URL into a 2160p HLS ladder
    * on R2 (Cloudflare Stream caps at 1080p). Returns immediately; the

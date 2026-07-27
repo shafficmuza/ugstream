@@ -1,8 +1,11 @@
 import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpsertTitleDto {
-  @IsIn(['movie', 'series'])
-  kind: 'movie' | 'series';
+  // Free-form kind slug validated against the runtime-managed `kinds` table
+  // (the admin UI only offers existing kinds). Kept as a String so new kinds
+  // don't require a code change.
+  @IsString()
+  kind: string;
 
   @IsString()
   name: string;

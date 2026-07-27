@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Episode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,7 +23,10 @@ export class EpisodesService {
     let episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
 
-    if (episode.videoProvider === 'r2_hls') {
+    if (episode.videoProvider === 'r2_hls' || episode.videoProvider === 'r2_file') {
+      // Self-hosted on R2 (HLS ladder, or a single ready-made file). Both
+      // store their object key/prefix in r2Prefix and set cfStatus directly
+      // — no Cloudflare status to sync.
       if (episode.cfStatus !== 'ready' || !episode.r2Prefix) {
         throw new NotFoundException('Video is not ready for playback yet.');
       }
@@ -70,16 +74,20 @@ export class EpisodesService {
       episode: { season: episode.season, number: episode.number, name: episode.name },
     };
 
-    if (episode.videoProvider === 'r2_hls') {
-      // Self-hosted 4K HLS on R2, served from the bucket's public (r2.dev)
-      // URL — no Worker, no per-request cost. Playback is unauthenticated at
-      // the CDN layer (weaker protection, chosen deliberately for now); the
-      // app still gates the *link* behind entitlement + login above. To
-      // re-add signed protection later, deploy infra/r2-hls-worker and mint
-      // an hls token here (see signHlsToken / git history).
+    if (episode.videoProvider === 'r2_hls' || episode.videoProvider === 'r2_file') {
+      // Self-hosted on R2, served from the bucket's public (r2.dev) URL — no
+      // Worker, no per-request cost. Playback is unauthenticated at the CDN
+      // layer (weaker protection, chosen deliberately for now); the app still
+      // gates the *link* behind entitlement + login above. To re-add signed
+      // protection later, deploy infra/r2-hls-worker and mint an hls token
+      // here (see signHlsToken / git history).
+      //
+      // r2_hls: r2Prefix is a folder, master.m3u8 lives inside it (adaptive).
+      // r2_file: r2Prefix is a single object key (a ready-made 4K MP4).
+      const isHls = episode.videoProvider === 'r2_hls';
       return {
-        provider: 'r2_hls' as const,
-        playbackUrl: `https://${this.r2.publicHost}/${episode.r2Prefix}master.m3u8`,
+        provider: episode.videoProvider as 'r2_hls' | 'r2_file',
+        playbackUrl: this.r2.publicUrl(isHls ? `${episode.r2Prefix}master.m3u8` : episode.r2Prefix!),
         expiresIn: 3600,
         ...meta,
       };
@@ -121,6 +129,99 @@ export class EpisodesService {
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
+  private requireR2(): void {
+    if (!this.r2.configured) {
+      throw new HttpException('R2 is not configured — set R2_* env vars first.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
+  /** Turn a user filename into a safe object-key segment. */
+  private safeName(filename: string): string {
+    const base = (filename || 'video').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(-80);
+    return base || 'video';
+  }
+
+  /**
+   * Start a browser-direct multipart upload to R2. `purpose` decides where
+   * the object lands: 'source' = a temporary transcode input (deleted after),
+   * 'final' = a ready-made file served as-is. Returns the key + uploadId the
+   * client threads through sign-part and complete.
+   */
+  async r2MultipartCreate(filename: string, contentType: string, purpose: 'source' | 'final') {
+    this.requireR2();
+    const folder = purpose === 'source' ? 'sources' : 'files';
+    const key = `${folder}/${randomUUID()}-${this.safeName(filename)}`;
+    const uploadId = await this.r2.createMultipart(key, contentType || 'application/octet-stream');
+    return { key, uploadId };
+  }
+
+  async r2MultipartSignPart(key: string, uploadId: string, partNumber: number) {
+    this.requireR2();
+    const url = await this.r2.presignUploadPart(key, uploadId, partNumber);
+    return { url };
+  }
+
+  async r2MultipartComplete(key: string, uploadId: string, parts: { PartNumber: number; ETag: string }[]) {
+    this.requireR2();
+    await this.r2.completeMultipart(key, uploadId, parts);
+    return { ok: true, key, publicUrl: this.r2.publicUrl(key) };
+  }
+
+  async r2MultipartAbort(key: string, uploadId: string) {
+    this.requireR2();
+    await this.r2.abortMultipart(key, uploadId);
+    return { ok: true };
+  }
+
+  /**
+   * Register an already-uploaded 4K file (a 'final' multipart upload) as a
+   * ready episode served directly from R2 — no transcode. Fast path: the
+   * admin uploads a browser-playable H.264 MP4 and it's immediately live
+   * (single quality, no adaptive ladder).
+   */
+  async registerR2File(
+    titleId: bigint,
+    key: string,
+    dto: { season?: number; number?: number; name?: string },
+  ) {
+    this.requireR2();
+    if (!key) throw new HttpException('Missing uploaded file key.', HttpStatus.BAD_REQUEST);
+    const episode = await this.prisma.episode.create({
+      data: {
+        titleId,
+        season: dto.season ?? 1,
+        number: dto.number ?? 1,
+        name: dto.name,
+        videoProvider: 'r2_file',
+        r2Prefix: key,
+        cfStatus: 'ready',
+      },
+    });
+    return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
+  }
+
+  /**
+   * Transcode a source that was just uploaded to R2 (a 'source' multipart
+   * upload) into a 4K HLS ladder. Reads the source from its R2 public URL and
+   * deletes it once the ladder is built.
+   */
+  async transcode4kFromR2(titleId: bigint, key: string, dto: { season?: number; number?: number; name?: string }) {
+    this.requireR2();
+    if (!key) throw new HttpException('Missing uploaded source key.', HttpStatus.BAD_REQUEST);
+    const episode = await this.prisma.episode.create({
+      data: {
+        titleId,
+        season: dto.season ?? 1,
+        number: dto.number ?? 1,
+        name: dto.name,
+        videoProvider: 'r2_hls',
+        cfStatus: 'uploading',
+      },
+    });
+    this.transcode.startTranscode(episode.id, this.r2.publicUrl(key), key);
+    return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
+  }
+
   async saveProgress(userId: bigint, episodeId: bigint, positionSecs: number) {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
@@ -150,7 +251,12 @@ export class EpisodesService {
       positionSecs: r.positionSecs,
       durationSecs: r.episode.durationSecs,
       thumbnailUrl: r.episode.thumbnailUrl,
-      title: { slug: r.episode.title.slug, name: r.episode.title.name, posterUrl: r.episode.title.posterUrl },
+      title: {
+        slug: r.episode.title.slug,
+        name: r.episode.title.name,
+        posterUrl: r.episode.title.posterUrl,
+        kind: r.episode.title.kind,
+      },
       season: r.episode.season,
       number: r.episode.number,
     }));

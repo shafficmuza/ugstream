@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { TitleForm, emptyTitleForm, toUpsertPayload, TitleFormValues } from '../../title-form';
-import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle } from '../../../shared';
+import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle, uploadToR2 } from '../../../shared';
 
 interface Episode {
   id: string;
@@ -14,12 +14,13 @@ interface Episode {
   name: string | null;
   cfStatus: 'pending' | 'uploading' | 'ready' | 'error';
   durationSecs: number | null;
+  videoProvider?: string;
 }
 
 export default function EditTitlePage() {
   const params = useParams<{ id: string }>();
   const [form, setForm] = useState<TitleFormValues>(emptyTitleForm);
-  const [kind, setKind] = useState<'movie' | 'series'>('movie');
+  const [kind, setKind] = useState<string>('movie');
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,6 +90,12 @@ export default function EditTitlePage() {
   );
 }
 
+function providerLabel(p?: string): string {
+  if (p === 'r2_hls') return '4K · R2 (adaptive)';
+  if (p === 'r2_file') return '4K · R2 (file)';
+  return '≤1080p · Stream';
+}
+
 function EpisodesSection({
   titleId,
   kind,
@@ -96,7 +103,7 @@ function EpisodesSection({
   onChange,
 }: {
   titleId: string;
-  kind: 'movie' | 'series';
+  kind: string;
   episodes: Episode[];
   onChange: () => void;
 }) {
@@ -109,6 +116,49 @@ function EpisodesSection({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+
+  // 4K-via-R2 upload panel state
+  const [r2Mode, setR2Mode] = useState<'file' | 'transcode'>('file');
+  const [r2Busy, setR2Busy] = useState(false);
+  const [r2Progress, setR2Progress] = useState<number | null>(null);
+  const [r2Phase, setR2Phase] = useState<string>('');
+
+  async function upload4k(file: File) {
+    const token = getAccessToken();
+    if (!token) return;
+    setError(null);
+    setR2Busy(true);
+    setR2Progress(0);
+    setR2Phase('Uploading to R2…');
+    const s = kind === 'series' ? parseInt(season, 10) : 1;
+    const n = kind === 'series' ? parseInt(number, 10) : 1;
+    try {
+      const purpose = r2Mode === 'file' ? 'final' : 'source';
+      const key = await uploadToR2(file, purpose, setR2Progress);
+      if (r2Mode === 'file') {
+        setR2Phase('Publishing…');
+        await apiFetch(`/admin/titles/${titleId}/episodes/register-r2-file`, {
+          method: 'POST',
+          token,
+          body: { key, name: name || undefined, season: s, number: n },
+        });
+      } else {
+        setR2Phase('Starting transcode…');
+        await apiFetch(`/admin/titles/${titleId}/episodes/transcode-4k-r2`, {
+          method: 'POST',
+          token,
+          body: { key, name: name || undefined, season: s, number: n },
+        });
+      }
+      onChange();
+    } catch (e: any) {
+      setError(e.message ?? '4K upload failed.');
+    } finally {
+      setR2Busy(false);
+      setR2Progress(null);
+      setR2Phase('');
+    }
+  }
 
   async function addEpisode(e?: React.FormEvent) {
     e?.preventDefault();
@@ -230,6 +280,57 @@ function EpisodesSection({
         </button>
       </form>
 
+      <div style={{ border: '1px solid #333', borderRadius: 6, padding: 16, marginBottom: 20 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Upload 4K (self-hosted on R2)</div>
+        <p style={{ opacity: 0.65, fontSize: 12.5, marginBottom: 12, maxWidth: 640 }}>
+          True 4K, delivered from your own R2 bucket (Cloudflare Stream caps at 1080p). Uploads go
+          straight from this browser to R2 in parts — large files are fine.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+            <input
+              type="radio"
+              name="r2mode"
+              checked={r2Mode === 'file'}
+              onChange={() => setR2Mode('file')}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <b>Ready 4K file (fast)</b> — upload an already-encoded <b>H.264 MP4</b>. Plays
+              immediately at its single 4K quality. HEVC/H.265 won&apos;t play in most browsers.
+            </span>
+          </label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+            <input
+              type="radio"
+              name="r2mode"
+              checked={r2Mode === 'transcode'}
+              onChange={() => setR2Mode('transcode')}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <b>Transcode source (adaptive)</b> — upload any source; the server builds a Netflix-style
+              4K/1080/720/480 ladder. Accepts any codec, but transcoding is <b>slow on this server</b>
+              (can take hours for a long film); status shows “uploading” until it finishes.
+            </span>
+          </label>
+        </div>
+
+        {r2Busy ? (
+          <div style={{ fontSize: 13 }}>
+            {r2Phase} {r2Progress != null && `${r2Progress}%`}
+          </div>
+        ) : (
+          <input
+            type="file"
+            accept="video/*"
+            title="Browser-direct multipart upload to R2 — large 4K files supported"
+            onChange={(e) => e.target.files?.[0] && upload4k(e.target.files[0])}
+          />
+        )}
+      </div>
+
       {adding && (
         <form onSubmit={addEpisode} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
           {kind === 'series' && (
@@ -275,9 +376,14 @@ function EpisodesSection({
                 </td>
               )}
               <td style={tdStyle}>{ep.name ?? '—'}</td>
-              <td style={tdStyle}>{ep.cfStatus}</td>
               <td style={tdStyle}>
-                {uploadingId === ep.id ? (
+                {ep.cfStatus}
+                <span style={{ opacity: 0.55, fontSize: 11, marginLeft: 6 }}>{providerLabel(ep.videoProvider)}</span>
+              </td>
+              <td style={tdStyle}>
+                {ep.videoProvider === 'r2_hls' || ep.videoProvider === 'r2_file' ? (
+                  <span style={{ opacity: 0.6, fontSize: 12 }}>self-hosted on R2</span>
+                ) : uploadingId === ep.id ? (
                   `Uploading… ${uploadProgress ?? 0}%`
                 ) : (
                   <input
