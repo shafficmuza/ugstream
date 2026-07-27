@@ -1,22 +1,27 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * Verifies the bearer access token and attaches { userId, sessionId, role }
- * to the request as `req.auth`. Kept dependency-free (no Passport) since
- * the token shape is simple and fully under our control.
+ * Verifies the bearer access token, then loads the user to (a) enforce
+ * account status on EVERY authenticated request — a banned account is
+ * refused immediately, not only at login/refresh — and (b) attach
+ * { userId, sessionId, role } to `req.auth` so downstream guards and
+ * handlers have the fresh role without re-querying.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,14 +32,23 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const token = header.slice('Bearer '.length);
+    let payload: { sub: string; sid: string };
     try {
-      const payload = await this.jwt.verifyAsync(token, {
+      payload = await this.jwt.verifyAsync(token, {
         secret: this.config.get('JWT_ACCESS_SECRET'),
       });
-      req.auth = { userId: BigInt(payload.sub), sessionId: payload.sid };
-      return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired access token.');
     }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: BigInt(payload.sub) },
+      select: { id: true, role: true, status: true },
+    });
+    if (!user) throw new UnauthorizedException('Account no longer exists.');
+    if (user.status === 'banned') throw new ForbiddenException('This account has been suspended.');
+
+    req.auth = { userId: user.id, sessionId: payload.sid, role: user.role };
+    return true;
   }
 }
