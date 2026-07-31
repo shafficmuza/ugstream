@@ -9,6 +9,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from './sms.service';
+import { ActivityService } from '../common/activity.service';
 
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
@@ -33,6 +34,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly sms: SmsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async requestOtp(phone: string): Promise<{ expiresInSeconds: number }> {
@@ -105,6 +107,7 @@ export class AuthService {
       throw new UnauthorizedException('This account has been suspended.');
     }
 
+    this.activity.log(user.id, 'login', 'Logged in');
     return this.issueSession(user.id, deviceLabel);
   }
 
