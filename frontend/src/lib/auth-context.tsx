@@ -8,6 +8,8 @@ interface Me {
   id: string;
   phone: string;
   displayName: string | null;
+  email: string | null;
+  address: string | null;
   role: string;
 }
 
@@ -17,6 +19,7 @@ interface AuthState {
   me: Me | null | undefined;
   login: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -67,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMe(null);
   }, []);
 
-  return <AuthContext.Provider value={{ me, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ me, login, logout, refresh }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

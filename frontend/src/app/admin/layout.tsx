@@ -13,6 +13,7 @@ const NAV = [
   { href: '/admin/titles', label: 'Titles' },
   { href: '/admin/genres', label: 'Genres' },
   { href: '/admin/kinds', label: 'Kinds' },
+  { href: '/admin/activity', label: 'Activity', adminOnly: true },
   { href: '/admin/plans', label: 'Plans', adminOnly: true },
   { href: '/admin/users', label: 'Users', adminOnly: true },
   { href: '/admin/payments', label: 'Payments', adminOnly: true },

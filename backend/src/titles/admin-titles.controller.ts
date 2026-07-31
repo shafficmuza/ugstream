@@ -5,6 +5,8 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
 import { UpsertTitleDto } from './dto/upsert-title.dto';
 import { EpisodesService } from '../episodes/episodes.service';
+import { ActivityService } from '../common/activity.service';
+import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 
 // Staff (admin OR editor) can list/create/edit/publish. Delete stacks
 // AdminGuard on top (all guards must pass) so it stays admin-only.
@@ -14,6 +16,7 @@ export class AdminTitlesController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly episodes: EpisodesService,
+    private readonly activity: ActivityService,
   ) {}
 
   @Get()
@@ -60,7 +63,7 @@ export class AdminTitlesController {
   }
 
   @Post()
-  async create(@Body() dto: UpsertTitleDto) {
+  async create(@CurrentUser() auth: AuthContext, @Body() dto: UpsertTitleDto) {
     const { genreIds, ...data } = dto;
     const title = await this.prisma.title.create({
       data: {
@@ -70,6 +73,7 @@ export class AdminTitlesController {
           : undefined,
       },
     });
+    this.activity.log(auth.userId, 'title_created', `Created title "${title.name}"`, title.id);
     return { ...title, id: title.id.toString() };
   }
 

@@ -30,7 +30,15 @@ export function HeaderAuth() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-      <span style={{ fontSize: 13, opacity: 0.7 }}>{me.phone}</span>
+      {me.displayName ? (
+        <Link href="/account/profile" style={{ fontSize: 13, opacity: 0.85, textDecoration: 'none' }} title="Edit your profile">
+          {me.displayName}
+        </Link>
+      ) : (
+        <Link href="/account/profile?required=1" style={{ fontSize: 13, color: '#ffb020', textDecoration: 'underline' }}>
+          Add your name
+        </Link>
+      )}
       {isStaff && (
         <Link href="/admin" style={{ fontSize: 13, textDecoration: 'underline' }}>
           {me.role === 'admin' ? 'Admin' : 'Manage'}

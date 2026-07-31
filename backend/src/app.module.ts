@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtGlobalModule } from './common/jwt-global.module';
 import { SecretsModule } from './common/secrets.module';
+import { ActivityModule } from './common/activity.module';
 import { AuthModule } from './auth/auth.module';
 import { TitlesModule } from './titles/titles.module';
 import { GenresModule } from './genres/genres.module';
@@ -24,6 +25,7 @@ import { AdminModule } from './admin/admin.module';
     PrismaModule,
     JwtGlobalModule,
     SecretsModule,
+    ActivityModule,
     AuthModule,
     TitlesModule,
     GenresModule,

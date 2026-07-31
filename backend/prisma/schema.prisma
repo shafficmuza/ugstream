@@ -38,6 +38,21 @@ model AppSettings {
   @@map("app_settings")
 }
 
+// Audit trail of content actions — who uploaded/created what, when. Powers
+// the admin "Activity" (daily uploads) view. `userId` is the acting staff
+// member; `summary` is a human-readable line; `titleId` links to the title.
+model ActivityLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt   @map("user_id")
+  action    String   @db.VarChar(40)
+  titleId   BigInt?  @map("title_id")
+  summary   String   @db.VarChar(300)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
 // Admin-editable secret values (payment API credentials, etc.), overriding
 // the corresponding env var. Read via SecretsService (DB → env fallback).
 // Values are never returned to the client — only a "configured" flag.
@@ -64,6 +79,8 @@ model User {
   id           BigInt    @id @default(autoincrement())
   phone        String    @unique @db.VarChar(15)
   displayName  String?   @map("display_name") @db.VarChar(100)
+  email        String?   @db.VarChar(120)
+  address      String?   @db.VarChar(200)
   role         UserRole  @default(user)
   status       UserStatus @default(active)
   createdAt    DateTime  @default(now()) @map("created_at")

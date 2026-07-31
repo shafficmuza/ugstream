@@ -4,11 +4,15 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
+import { ActivityService } from '../common/activity.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class EpisodesController {
-  constructor(private readonly episodes: EpisodesService) {}
+  constructor(
+    private readonly episodes: EpisodesService,
+    private readonly activity: ActivityService,
+  ) {}
 
   @Post('episodes/:id/play')
   play(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
@@ -31,11 +35,14 @@ export class EpisodesController {
 
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes')
-  createEpisode(
+  async createEpisode(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { season?: number; number?: number; name?: string },
   ) {
-    return this.episodes.createForTitle(BigInt(titleId), body);
+    const r = await this.episodes.createForTitle(BigInt(titleId), body);
+    this.activity.log(auth.userId, 'video_added', 'Added a video (Cloudflare Stream upload)', BigInt(titleId));
+    return r;
   }
 
   @UseGuards(StaffGuard)
@@ -59,16 +66,19 @@ export class EpisodesController {
 
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/import-url')
-  importFromUrl(
+  async importFromUrl(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { url: string; name?: string; season?: number; number?: number },
   ) {
-    return this.episodes.importFromUrl(
+    const r = await this.episodes.importFromUrl(
       BigInt(titleId),
       body.url,
       body.name ?? 'Imported video',
       { season: body.season, number: body.number },
     );
+    this.activity.log(auth.userId, 'video_imported', 'Imported a video from URL', BigInt(titleId));
+    return r;
   }
 
   @UseGuards(AdminGuard)
@@ -110,29 +120,35 @@ export class EpisodesController {
   /** Register an already-uploaded ready 4K file as a directly-served episode. */
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/register-r2-file')
-  registerR2File(
+  async registerR2File(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { key: string; name?: string; season?: number; number?: number },
   ) {
-    return this.episodes.registerR2File(BigInt(titleId), body.key, {
+    const r = await this.episodes.registerR2File(BigInt(titleId), body.key, {
       season: body.season,
       number: body.number,
       name: body.name,
     });
+    this.activity.log(auth.userId, 'video_uploaded', 'Uploaded a ready 4K file (R2)', BigInt(titleId));
+    return r;
   }
 
   /** Transcode an already-uploaded R2 source into a 4K HLS ladder. */
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/transcode-4k-r2')
-  transcode4kFromR2(
+  async transcode4kFromR2(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { key: string; name?: string; season?: number; number?: number },
   ) {
-    return this.episodes.transcode4kFromR2(BigInt(titleId), body.key, {
+    const r = await this.episodes.transcode4kFromR2(BigInt(titleId), body.key, {
       season: body.season,
       number: body.number,
       name: body.name,
     });
+    this.activity.log(auth.userId, 'video_uploaded', 'Uploaded a source for 4K transcode (R2)', BigInt(titleId));
+    return r;
   }
 
   // --- Pre-made HLS ladder upload (locally-encoded adaptive folder) --------
@@ -154,15 +170,18 @@ export class EpisodesController {
   /** Register the uploaded ladder as a ready adaptive episode. */
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/register-r2-hls')
-  registerR2Hls(
+  async registerR2Hls(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { prefix: string; name?: string; season?: number; number?: number },
   ) {
-    return this.episodes.registerR2Hls(BigInt(titleId), body.prefix, {
+    const r = await this.episodes.registerR2Hls(BigInt(titleId), body.prefix, {
       season: body.season,
       number: body.number,
       name: body.name,
     });
+    this.activity.log(auth.userId, 'video_uploaded', 'Uploaded a pre-made 4K HLS ladder (R2)', BigInt(titleId));
+    return r;
   }
 
   /**
@@ -172,14 +191,17 @@ export class EpisodesController {
    */
   @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/transcode-4k')
-  transcode4k(
+  async transcode4k(
+    @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
     @Body() body: { url: string; name?: string; season?: number; number?: number },
   ) {
-    return this.episodes.transcode4k(BigInt(titleId), body.url, {
+    const r = await this.episodes.transcode4k(BigInt(titleId), body.url, {
       season: body.season,
       number: body.number,
       name: body.name,
     });
+    this.activity.log(auth.userId, 'video_transcode', 'Started a 4K transcode from URL', BigInt(titleId));
+    return r;
   }
 }
