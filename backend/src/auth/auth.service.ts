@@ -48,14 +48,17 @@ export class AuthService {
       );
     }
 
-    // TEMPORARY: no reliable SMS provider is wired up yet, so every phone
-    // number is issued this fixed code instead of a real one. This is a
-    // real account-takeover risk (anyone who knows a phone number can log
-    // in as that user) — set OTP_STATIC_CODE="" in .env the moment a real
-    // SMS provider is wired in (see sms.service.ts) to go back to random,
-    // per-request codes.
+    // OTP_STATIC_CODE is a dev/testing bypass (fixed code, no SMS) — a real
+    // account-takeover risk if left on in production. It is honoured ONLY
+    // while no real SMS gateway is configured; the moment SMS is wired up
+    // (see sms.service.ts) we ignore the bypass and always issue a random,
+    // SMS-delivered code. So enabling SMS auto-secures login with no code
+    // change. To disable the bypass without SMS too, set OTP_STATIC_CODE="".
+    const smsReady = await this.sms.isConfigured();
     const staticCode = this.config.get<string>('OTP_STATIC_CODE');
-    const code = staticCode || randomOtp();
+    const useStatic = !smsReady && !!staticCode;
+
+    const code = useStatic ? staticCode! : randomOtp();
     const codeHash = await bcrypt.hash(code, 10);
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
@@ -63,7 +66,7 @@ export class AuthService {
       data: { phone, codeHash, expiresAt },
     });
 
-    if (!staticCode) {
+    if (!useStatic) {
       await this.sms.send(phone, `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`);
     }
 
