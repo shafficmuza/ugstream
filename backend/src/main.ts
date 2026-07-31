@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import * as fs from 'fs';
@@ -57,6 +58,16 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   app.setGlobalPrefix('v1');
+
+  // OpenAPI / Swagger — UI at /v1/docs, JSON at /v1/docs-json. The @nestjs/
+  // swagger CLI plugin (nest-cli.json) auto-derives schemas from the DTOs.
+  const swaggerCfg = new DocumentBuilder()
+    .setTitle('ham / ugstream API')
+    .setDescription('Streaming platform API — auth, catalogue, playback, payments.')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  SwaggerModule.setup('v1/docs', app, SwaggerModule.createDocument(app, swaggerCfg));
 
   const port = process.env.PORT ?? 4001;
   await app.listen(port);

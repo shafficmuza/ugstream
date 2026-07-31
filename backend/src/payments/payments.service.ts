@@ -8,6 +8,7 @@ import { MomoService } from './momo.service';
 import { YoService } from './yo.service';
 import { DpoService } from './dpo.service';
 import { SecretsService } from '../common/secrets.service';
+import { normalizeUgPhone } from './phone.util';
 
 /** Concrete payment processors. Card → stripe; the rest are mobile-money. */
 export type PaymentProvider = 'flutterwave' | 'stripe' | 'momo' | 'yo' | 'dpo';
@@ -81,23 +82,12 @@ export class PaymentsService {
     return { momo: 'MTN Mobile Money', flutterwave: 'Flutterwave', yo: 'Yo! Payments', dpo: 'DPO Pay', stripe: 'Card' }[p];
   }
 
-  /** Normalise a Ugandan mobile-money number to 256XXXXXXXXX (no '+'). */
-  private normalizeUgPhone(input: string): string {
-    let n = input.replace(/[^\d]/g, '');
-    if (n.startsWith('0')) n = '256' + n.slice(1);
-    else if (n.length === 9) n = '256' + n; // e.g. 772123456
-    if (!/^256\d{9}$/.test(n)) {
-      throw new BadRequestException('Enter a valid Ugandan mobile money number, e.g. 0772123456.');
-    }
-    return n;
-  }
-
   async checkout(userId: bigint, dto: CheckoutDto) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const provider = await this.resolveProvider(dto);
     // The number to charge for mobile money: the customer-entered one if
     // given, else the account's login number.
-    const payerPhone = dto.payerPhone ? this.normalizeUgPhone(dto.payerPhone) : user.phone;
+    const payerPhone = dto.payerPhone ? normalizeUgPhone(dto.payerPhone) : user.phone;
 
     let amountUgx: number;
     let planId: number | undefined;
