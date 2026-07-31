@@ -26,12 +26,14 @@ export function HeaderAuth() {
     );
   }
 
+  const isStaff = me.role === 'admin' || me.role === 'editor';
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       <span style={{ fontSize: 13, opacity: 0.7 }}>{me.phone}</span>
-      {me.role === 'admin' && (
+      {isStaff && (
         <Link href="/admin" style={{ fontSize: 13, textDecoration: 'underline' }}>
-          Admin
+          {me.role === 'admin' ? 'Admin' : 'Manage'}
         </Link>
       )}
       <button className="btn" onClick={handleLogout}>
