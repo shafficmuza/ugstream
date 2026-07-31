@@ -33,6 +33,9 @@ model AppSettings {
   // Stripe. Admin flips this in the UI; the actual API credentials live in
   // env, never the DB.
   mobileMoneyProvider String @default("momo") @map("mobile_money_provider") @db.VarChar(20)
+  // Active SMS/OTP gateway: 'africastalking' | 'twilio'. Credentials live in
+  // the secrets store; admin flips this in the UI.
+  smsProvider       String   @default("africastalking") @map("sms_provider") @db.VarChar(20)
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")

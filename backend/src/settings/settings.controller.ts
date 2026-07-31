@@ -17,6 +17,7 @@ import * as path from 'path';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { SecretsService } from '../common/secrets.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
 const LOGO_DIR = path.join(process.cwd(), 'uploads', 'logos');
@@ -43,11 +44,19 @@ function imageUpload(destination: string, maxSizeBytes: number) {
   });
 }
 
+// Whitelisted SMS credential keys per gateway — the only keys the UI can set.
+const SMS_PROVIDER_KEYS: Record<string, string[]> = {
+  africastalking: ['SMS_AT_USERNAME', 'SMS_AT_API_KEY', 'SMS_AT_SENDER_ID', 'SMS_AT_ENV'],
+  twilio: ['SMS_TWILIO_ACCOUNT_SID', 'SMS_TWILIO_AUTH_TOKEN', 'SMS_TWILIO_FROM'],
+};
+const ALL_SMS_KEYS = Object.values(SMS_PROVIDER_KEYS).flat();
+
 @Controller()
 export class SettingsController {
   constructor(
     private readonly settings: SettingsService,
     private readonly config: ConfigService,
+    private readonly secrets: SecretsService,
   ) {}
 
   @Get('settings')
@@ -59,6 +68,30 @@ export class SettingsController {
   @Patch('admin/settings')
   update(@Body() dto: UpdateSettingsDto) {
     return this.settings.update(dto);
+  }
+
+  /** SMS gateway credential fields + whether each is set (no values leaked). */
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('admin/sms-credentials')
+  async smsCredentials() {
+    const status = await this.secrets.status(ALL_SMS_KEYS);
+    return {
+      providers: Object.entries(SMS_PROVIDER_KEYS).map(([provider, keys]) => ({
+        provider,
+        keys: keys.map((key) => ({ key, set: status[key] })),
+      })),
+    };
+  }
+
+  /** Set/clear SMS credentials (empty clears). Whitelisted keys only. */
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post('admin/sms-credentials')
+  async setSmsCredentials(@Body() body: { values?: Record<string, string> }) {
+    const values = body?.values ?? {};
+    const invalid = Object.keys(values).filter((k) => !ALL_SMS_KEYS.includes(k));
+    if (invalid.length) throw new BadRequestException(`Unknown credential key(s): ${invalid.join(', ')}`);
+    for (const k of Object.keys(values)) await this.secrets.set(k, values[k]);
+    return { ok: true, updated: Object.keys(values).length };
   }
 
   @UseGuards(JwtAuthGuard, AdminGuard)

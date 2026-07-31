@@ -4,6 +4,9 @@ export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
   mobileMoneyProvider?: string;
 
+  @IsOptional() @IsIn(['africastalking', 'twilio'])
+  smsProvider?: string;
+
   @IsOptional() @IsString() @MaxLength(80)
   appName?: string;
 

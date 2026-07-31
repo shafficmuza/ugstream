@@ -9,6 +9,7 @@ export interface AppSettings {
   heroBackgroundUrl: string | null;
   authBackgroundUrl: string | null;
   mobileMoneyProvider?: string;
+  smsProvider?: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   heroBackgroundUrl: null,
   authBackgroundUrl: null,
   mobileMoneyProvider: 'momo',
+  smsProvider: 'africastalking',
 };
 
 export async function fetchSettings(): Promise<AppSettings> {

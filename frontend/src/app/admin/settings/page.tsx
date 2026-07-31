@@ -9,7 +9,12 @@ import { labelStyle, inputStyle, uploadFile } from '../shared';
 type FormState = Pick<
   AppSettings,
   'appName' | 'tagline' | 'supportEmail' | 'supportPhone' | 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl'
-> & { mobileMoneyProvider: string };
+> & { mobileMoneyProvider: string; smsProvider: string };
+
+const SMS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'africastalking', label: "Africa's Talking" },
+  { value: 'twilio', label: 'Twilio' },
+];
 
 const MOBILE_MONEY_OPTIONS: { value: string; label: string }[] = [
   { value: 'momo', label: 'MTN Mobile Money (direct)' },
@@ -28,6 +33,7 @@ export default function AdminSettingsPage() {
     heroBackgroundUrl: null,
     authBackgroundUrl: null,
     mobileMoneyProvider: 'momo',
+    smsProvider: 'africastalking',
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -35,8 +41,54 @@ export default function AdminSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [methods, setMethods] = useState<{ method: string; provider: string; enabled: boolean }[]>([]);
   const [credProviders, setCredProviders] = useState<{ provider: string; keys: { key: string; set: boolean }[] }[]>([]);
+  const [smsProviders, setSmsProviders] = useState<{ provider: string; keys: { key: string; set: boolean }[] }[]>([]);
+  const [smsInputs, setSmsInputs] = useState<Record<string, string>>({});
+  const [savingSms, setSavingSms] = useState(false);
   const [credInputs, setCredInputs] = useState<Record<string, string>>({});
   const [savingCreds, setSavingCreds] = useState(false);
+
+  function loadSmsCredentials() {
+    const token = getAccessToken();
+    if (!token) return;
+    apiFetch<{ providers: { provider: string; keys: { key: string; set: boolean }[] }[] }>('/admin/sms-credentials', { token })
+      .then((r) => setSmsProviders(r.providers))
+      .catch(() => setSmsProviders([]));
+  }
+
+  async function saveSmsProvider(provider: string) {
+    const token = getAccessToken();
+    if (!token) return;
+    setForm((f) => ({ ...f, smsProvider: provider }));
+    setMessage(null);
+    try {
+      await apiFetch('/admin/settings', { method: 'PATCH', token, body: { smsProvider: provider } });
+      setMessage('SMS provider updated.');
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to update SMS provider.');
+    }
+  }
+
+  async function saveSmsCredentials() {
+    const token = getAccessToken();
+    if (!token) return;
+    const values = Object.fromEntries(Object.entries(smsInputs).filter(([, v]) => v.trim() !== ''));
+    if (Object.keys(values).length === 0) {
+      setMessage('Nothing to save — type a value into a field first.');
+      return;
+    }
+    setSavingSms(true);
+    setMessage(null);
+    try {
+      await apiFetch('/admin/sms-credentials', { method: 'POST', token, body: { values } });
+      setSmsInputs({});
+      setMessage('SMS credentials saved.');
+      loadSmsCredentials();
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to save SMS credentials.');
+    } finally {
+      setSavingSms(false);
+    }
+  }
 
   function loadCredentials() {
     const token = getAccessToken();
@@ -81,6 +133,7 @@ export default function AdminSettingsPage() {
         heroBackgroundUrl: settings.heroBackgroundUrl,
         authBackgroundUrl: settings.authBackgroundUrl,
         mobileMoneyProvider: settings.mobileMoneyProvider ?? 'momo',
+        smsProvider: settings.smsProvider ?? 'africastalking',
       });
       setLoaded(true);
     });
@@ -90,6 +143,7 @@ export default function AdminSettingsPage() {
         .then((r) => setMethods(r.methods))
         .catch(() => setMethods([]));
       loadCredentials();
+      loadSmsCredentials();
     }
   }, []);
 
@@ -304,6 +358,50 @@ export default function AdminSettingsPage() {
       {credProviders.length > 0 && (
         <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={saveCredentials} disabled={savingCreds}>
           {savingCreds ? 'Saving…' : 'Save payment credentials'}
+        </button>
+      )}
+
+      <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>SMS / OTP gateway</h2>
+      <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+        Which gateway sends login codes. Configuring it <b>disables the test bypass code</b> and
+        switches login to real SMS codes. Credentials are stored securely and never shown back.
+      </p>
+
+      <label style={labelStyle}>SMS provider</label>
+      <select style={inputStyle} value={form.smsProvider} onChange={(e) => saveSmsProvider(e.target.value)}>
+        {SMS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+
+      {smsProviders
+        .filter((p) => p.provider === form.smsProvider)
+        .map((p) => (
+          <div key={p.provider} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px 14px', marginTop: 12, marginBottom: 12 }}>
+            {p.keys.map((k) => (
+              <div key={k.key} style={{ marginBottom: 8 }}>
+                <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{k.key}</span>
+                  <span style={{ fontSize: 11, color: k.set ? '#3ddc84' : '#ffb020' }}>{k.set ? 'set' : 'not set'}</span>
+                </label>
+                <input
+                  style={inputStyle}
+                  type={k.key.endsWith('_ENV') ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder={k.set ? '•••••••• (leave blank to keep)' : k.key.endsWith('_ENV') ? 'production' : 'not set'}
+                  value={smsInputs[k.key] ?? ''}
+                  onChange={(e) => setSmsInputs((c) => ({ ...c, [k.key]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+
+      {smsProviders.length > 0 && (
+        <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={saveSmsCredentials} disabled={savingSms}>
+          {savingSms ? 'Saving…' : 'Save SMS credentials'}
         </button>
       )}
 
