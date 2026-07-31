@@ -1,4 +1,4 @@
-import { getAccessToken } from '@/lib/auth';
+import { getAccessToken, getRefreshToken, refreshAccessToken } from '@/lib/auth';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
 
@@ -56,15 +56,27 @@ export async function uploadFile(path: string, file: File): Promise<any> {
 }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const token = getAccessToken();
+  let token = getAccessToken();
   if (!token) throw new Error('Not logged in.');
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.message ?? 'Request failed.');
+  const send = (t: string) =>
+    fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  let res = await send(token);
+  // Long uploads outlive the 15-min access token — refresh and retry once so
+  // the finalizing calls (sign-part/complete/register) don't fail mid-upload.
+  if (res.status === 401 && getRefreshToken()) {
+    const fresh = await refreshAccessToken();
+    if (fresh) {
+      token = fresh;
+      res = await send(fresh);
+    }
+  }
+  const json = await res.json().catch(() => undefined);
+  if (!res.ok) throw new Error(json?.message ?? 'Request failed.');
   return json as T;
 }
 

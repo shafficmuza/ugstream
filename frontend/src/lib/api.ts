@@ -1,3 +1,5 @@
+import { getRefreshToken, refreshAccessToken } from './auth';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
 
 export interface ApiError {
@@ -8,23 +10,35 @@ export interface ApiError {
 }
 
 /**
- * Thin fetch wrapper. Access tokens are short-lived (15 min); the caller is
- * responsible for retrying once after a 401 by hitting /auth/refresh — kept
- * out of this helper to avoid hidden infinite-retry loops.
+ * Fetch wrapper with automatic token refresh. Access tokens are short-lived
+ * (15 min); on a 401 we transparently exchange the 30-day refresh token for a
+ * new access token and retry the request once. This is what keeps a session
+ * alive across long activity (watching a movie, uploading) instead of
+ * "timing out" after 15 minutes.
  */
 export async function apiFetch<T>(
   path: string,
   opts: { method?: string; body?: unknown; token?: string } = {},
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: opts.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
-    },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    cache: 'no-store',
-  });
+  const send = (token?: string) =>
+    fetch(`${API_BASE}${path}`, {
+      method: opts.method ?? 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      cache: 'no-store',
+    });
+
+  let res = await send(opts.token);
+
+  // Expired access token → refresh once and retry (only when we actually have
+  // a refresh token, i.e. an authenticated client-side call).
+  if (res.status === 401 && opts.token && typeof window !== 'undefined' && getRefreshToken()) {
+    const fresh = await refreshAccessToken();
+    if (fresh) res = await send(fresh);
+  }
 
   const json = await res.json().catch(() => undefined);
   if (!res.ok) {

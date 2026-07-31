@@ -26,3 +26,44 @@ export function clearTokens() {
   window.localStorage.removeItem(ACCESS_KEY);
   window.localStorage.removeItem(REFRESH_KEY);
 }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+
+// Dedupe concurrent refreshes — a burst of 401s (e.g. many parallel upload
+// chunk-sign calls) must trigger exactly one /auth/refresh, not a stampede.
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Exchange the 30-day refresh token for a fresh access token (the backend
+ * rotates both). Returns the new access token, or null if refresh isn't
+ * possible (no/expired refresh token) — in which case tokens are cleared.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) return null;
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) {
+        clearTokens();
+        return null;
+      }
+      const json = await res.json();
+      if (json?.accessToken && json?.refreshToken) {
+        setTokens(json.accessToken, json.refreshToken);
+        return json.accessToken as string;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
