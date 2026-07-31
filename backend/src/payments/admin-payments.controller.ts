@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { SecretsService } from '../common/secrets.service';
+import { SetCredentialsDto } from './dto/checkout.dto';
 
 // Whitelisted credential keys per mobile-money provider — the only keys the
 // UI can write, so the credentials form can't be used to set arbitrary
@@ -37,7 +38,7 @@ export class AdminPaymentsController {
 
   /** Set/clear credential values (empty string clears). Whitelisted keys only. */
   @Post('credentials')
-  async setCredentials(@Body() body: { values: Record<string, string> }) {
+  async setCredentials(@Body() body: SetCredentialsDto) {
     const values = body?.values ?? {};
     const keys = Object.keys(values);
     const invalid = keys.filter((k) => !ALL_KEYS.includes(k));

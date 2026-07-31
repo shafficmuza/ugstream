@@ -5,6 +5,15 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 import { ActivityService } from '../common/activity.service';
+import {
+  SaveProgressDto,
+  CreateEpisodeDto,
+  ImportUrlDto,
+  RegisterR2FileDto,
+  RegisterR2HlsDto,
+  TranscodeUrlDto,
+  TranscodeR2Dto,
+} from './dto/episode.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -23,7 +32,7 @@ export class EpisodesController {
   progress(
     @CurrentUser() auth: AuthContext,
     @Param('id') id: string,
-    @Body() body: { positionSecs: number },
+    @Body() body: SaveProgressDto,
   ) {
     return this.episodes.saveProgress(auth.userId, BigInt(id), body.positionSecs);
   }
@@ -38,7 +47,7 @@ export class EpisodesController {
   async createEpisode(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { season?: number; number?: number; name?: string },
+    @Body() body: CreateEpisodeDto,
   ) {
     const r = await this.episodes.createForTitle(BigInt(titleId), body);
     this.activity.log(auth.userId, 'video_added', 'Added a video (Cloudflare Stream upload)', BigInt(titleId));
@@ -69,7 +78,7 @@ export class EpisodesController {
   async importFromUrl(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { url: string; name?: string; season?: number; number?: number },
+    @Body() body: ImportUrlDto,
   ) {
     const r = await this.episodes.importFromUrl(
       BigInt(titleId),
@@ -123,7 +132,7 @@ export class EpisodesController {
   async registerR2File(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { key: string; name?: string; season?: number; number?: number },
+    @Body() body: RegisterR2FileDto,
   ) {
     const r = await this.episodes.registerR2File(BigInt(titleId), body.key, {
       season: body.season,
@@ -140,7 +149,7 @@ export class EpisodesController {
   async transcode4kFromR2(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { key: string; name?: string; season?: number; number?: number },
+    @Body() body: TranscodeR2Dto,
   ) {
     const r = await this.episodes.transcode4kFromR2(BigInt(titleId), body.key, {
       season: body.season,
@@ -173,7 +182,7 @@ export class EpisodesController {
   async registerR2Hls(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { prefix: string; name?: string; season?: number; number?: number },
+    @Body() body: RegisterR2HlsDto,
   ) {
     const r = await this.episodes.registerR2Hls(BigInt(titleId), body.prefix, {
       season: body.season,
@@ -194,7 +203,7 @@ export class EpisodesController {
   async transcode4k(
     @CurrentUser() auth: AuthContext,
     @Param('titleId') titleId: string,
-    @Body() body: { url: string; name?: string; season?: number; number?: number },
+    @Body() body: TranscodeUrlDto,
   ) {
     const r = await this.episodes.transcode4k(BigInt(titleId), body.url, {
       season: body.season,

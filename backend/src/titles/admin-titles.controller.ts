@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
 import { UpsertTitleDto } from './dto/upsert-title.dto';
+import { PublishTitleDto } from './dto/publish-title.dto';
 import { EpisodesService } from '../episodes/episodes.service';
 import { ActivityService } from '../common/activity.service';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
@@ -98,7 +99,7 @@ export class AdminTitlesController {
   }
 
   @Patch(':id/publish')
-  async publish(@Param('id') id: string, @Body() body: { published: boolean }) {
+  async publish(@Param('id') id: string, @Body() body: PublishTitleDto) {
     const title = await this.prisma.title.update({
       where: { id: BigInt(id) },
       data: { published: body.published },

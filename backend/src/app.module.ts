@@ -18,6 +18,7 @@ import { SettingsModule } from './settings/settings.module';
 import { MediaModule } from './media/media.module';
 import { AdminModule } from './admin/admin.module';
 import { ActivityInterceptor } from './common/activity.interceptor';
+import { HealthController } from './common/health.controller';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ActivityInterceptor } from './common/activity.interceptor';
     MediaModule,
     AdminModule,
   ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: ActivityInterceptor },

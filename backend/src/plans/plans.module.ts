@@ -3,6 +3,7 @@ import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/co
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { CreatePlanDto, UpdatePlanDto } from './dto/plan.dto';
 
 @Controller('plans')
 class PlansController {
@@ -25,15 +26,12 @@ class AdminPlansController {
   }
 
   @Post()
-  create(@Body() body: { name: string; priceUgx: number; durationDays: number }) {
+  create(@Body() body: CreatePlanDto) {
     return this.prisma.plan.create({ data: body });
   }
 
   @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() body: Partial<{ name: string; priceUgx: number; durationDays: number; active: boolean }>,
-  ) {
+  update(@Param('id') id: string, @Body() body: UpdatePlanDto) {
     return this.prisma.plan.update({ where: { id: Number(id) }, data: body });
   }
 }

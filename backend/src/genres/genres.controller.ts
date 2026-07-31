@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateGenreDto } from './dto/genre.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
@@ -25,7 +26,7 @@ export class GenresController {
 
   @UseGuards(JwtAuthGuard, StaffGuard)
   @Post('admin/genres')
-  create(@Body() body: { name: string; slug: string }) {
+  create(@Body() body: CreateGenreDto) {
     return this.prisma.genre.create({ data: body });
   }
 

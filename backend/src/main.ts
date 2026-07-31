@@ -1,7 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import * as express from 'express';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from './app.module';
@@ -53,12 +54,13 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   app.setGlobalPrefix('v1');
 
   const port = process.env.PORT ?? 4001;
   await app.listen(port);
-  console.log(`ugstream backend listening on :${port}`);
+  new Logger('Bootstrap').log(`ugstream backend listening on :${port}`);
 }
 
 bootstrap();

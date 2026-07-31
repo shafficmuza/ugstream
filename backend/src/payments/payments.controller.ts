@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
+import { CheckoutDto } from './dto/checkout.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('payments')
@@ -15,17 +16,7 @@ export class PaymentsController {
   }
 
   @Post('checkout')
-  checkout(
-    @CurrentUser() auth: AuthContext,
-    @Body()
-    body: {
-      purpose: 'subscription' | 'title';
-      planId?: number;
-      titleId?: string;
-      method?: 'card' | 'mobile_money';
-      provider?: 'flutterwave' | 'stripe' | 'momo' | 'yo' | 'dpo';
-    },
-  ) {
+  checkout(@CurrentUser() auth: AuthContext, @Body() body: CheckoutDto) {
     return this.payments.checkout(auth.userId, body);
   }
 

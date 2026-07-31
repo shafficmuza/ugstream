@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { StaffGuard } from '../common/guards/staff.guard';
+import { CreateKindDto } from './dto/kind.dto';
 
 /**
  * Title "kinds" (Movie, Series, Documentary, Music, …) as a runtime-managed
@@ -41,7 +42,7 @@ export class KindsController {
 
   @UseGuards(JwtAuthGuard, StaffGuard)
   @Post('admin/kinds')
-  create(@Body() body: { name: string; slug: string; sortOrder?: number }) {
+  create(@Body() body: CreateKindDto) {
     if (!body?.name?.trim() || !body?.slug?.trim()) {
       throw new BadRequestException('name and slug are required.');
     }

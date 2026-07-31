@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/c
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/users')
@@ -36,7 +37,7 @@ export class AdminUsersController {
   @Patch(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: Partial<{ role: 'user' | 'editor' | 'admin'; status: 'active' | 'banned'; displayName: string }>,
+    @Body() body: UpdateUserDto,
   ) {
     const user = await this.prisma.user.update({ where: { id: BigInt(id) }, data: body });
     return { ...user, id: user.id.toString() };
