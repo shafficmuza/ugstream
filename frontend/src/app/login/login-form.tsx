@@ -85,6 +85,28 @@ export function LoginForm() {
       )}
 
       {error && <p style={{ color: '#ff6b6b', marginTop: 12 }}>{error}</p>}
+
+      {process.env.NEXT_PUBLIC_ANDROID_APK_URL && (
+        <a
+          href={process.env.NEXT_PUBLIC_ANDROID_APK_URL}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginTop: 20,
+            padding: '10px 14px',
+            border: '1px solid #2f7d32',
+            borderRadius: 6,
+            color: '#7cd47c',
+            textDecoration: 'none',
+            fontSize: 14,
+          }}
+          download
+        >
+          <span aria-hidden>🤖</span> Download the Android app
+        </a>
+      )}
     </div>
   );
 }

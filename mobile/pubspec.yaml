@@ -1,0 +1,24 @@
+name: ham_watch
+description: Ham Watch — streaming app (consumer).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.4.0                     # HTTP client (interceptors for auth + token refresh)
+  flutter_secure_storage: ^9.0.0 # Keychain/Keystore token storage
+  provider: ^6.1.0               # simple state management (auth)
+  cached_network_image: ^3.3.0   # poster/banner images
+  video_player: ^2.8.0           # native HLS/MP4 playback (ExoPlayer/AVPlayer)
+  chewie: ^1.7.0                 # player controls UI on top of video_player
+  url_launcher: ^6.2.0           # open hosted payment pages (card/DPO)
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

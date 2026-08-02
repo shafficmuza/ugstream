@@ -1,0 +1,53 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ham_watch/models/models.dart';
+
+void main() {
+  test('TitleCard parses API shape', () {
+    final c = TitleCard.fromJson({
+      'id': 27, 'slug': '72-hours', 'name': '72 HOURS', 'kind': 'movie',
+      'posterUrl': 'https://x/p.jpg', 'access': 'subscription', 'priceUgx': null,
+      'releaseYear': 2024, 'firstEpisodeId': 26,
+    });
+    expect(c.id, '27');
+    expect(c.slug, '72-hours');
+    expect(c.firstEpisodeId, '26');
+    expect(c.kind, 'movie');
+  });
+
+  test('HomeData parses billboard + rails', () {
+    final h = HomeData.fromJson({
+      'billboard': {'id': 1, 'slug': 's', 'name': 'N', 'kind': 'movie', 'description': 'd', 'bannerUrl': 'b'},
+      'rails': [
+        {'key': 'new', 'rail': 'New', 'titles': [{'id': 2, 'slug': 'a', 'name': 'A', 'kind': 'movie'}]},
+      ],
+    });
+    expect(h.billboard!.name, 'N');
+    expect(h.billboard!.description, 'd');
+    expect(h.rails.length, 1);
+    expect(h.rails.first.name, 'New');
+    expect(h.rails.first.titles.first.slug, 'a');
+  });
+
+  test('PlayInfo shows S/E label only for series', () {
+    final movie = PlayInfo.fromJson({
+      'provider': 'r2_hls', 'playbackUrl': 'u', 'resumeAt': 30,
+      'title': {'name': 'M', 'kind': 'movie'}, 'episode': {'season': 1, 'number': 1},
+    });
+    expect(movie.epLabel, isNull);
+    expect(movie.resumeAt, 30);
+
+    final series = PlayInfo.fromJson({
+      'provider': 'cloudflare', 'playbackUrl': 'u', 'resumeAt': 0,
+      'title': {'name': 'S', 'kind': 'series'}, 'episode': {'season': 2, 'number': 5},
+    });
+    expect(series.epLabel, 'S2 E5');
+  });
+
+  test('ContinueItem computes progress', () {
+    final c = ContinueItem.fromJson({
+      'episodeId': 9, 'positionSecs': 300, 'durationSecs': 600,
+      'title': {'slug': 's', 'name': 'n', 'kind': 'movie', 'posterUrl': null},
+    });
+    expect(c.progress, 0.5);
+  });
+}
