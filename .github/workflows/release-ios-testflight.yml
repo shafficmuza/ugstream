@@ -47,7 +47,10 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
+          # Apple rejects re-uploads with a duplicate build number, so use
+          # the CI run number (monotonic) as CFBundleVersion.
           flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_BASE=https://ham.sentepos.com/api/v1
 
       - name: Fastlane beta (sign + upload to TestFlight)
