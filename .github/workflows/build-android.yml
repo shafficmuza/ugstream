@@ -4,10 +4,11 @@ name: Build Android APK
 # deploys it to the server so the login page's "Download Android app" button
 # serves the latest build.
 #
-# Required repo secrets (Settings → Secrets and variables → Actions):
-#   DEPLOY_HOST      e.g. 95.111.232.148
-#   DEPLOY_USER      e.g. root
-#   DEPLOY_PASSWORD  the SSH password for that user
+# Deploy credentials, matching how they were configured in this repo:
+#   vars.DEPLOY_HOST / vars.DEPLOY_USER    — repository Variables
+#   secrets.DEPLOY_PASSWORD                — a secret inside the environment
+#                                            named "DEPLOY_PASSWORD" (bound
+#                                            via the job's `environment:`)
 
 on:
   push:
@@ -20,6 +21,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Binds the environment holding the deploy password secret.
+    environment: DEPLOY_PASSWORD
     steps:
       - uses: actions/checkout@v4
 
@@ -71,8 +74,8 @@ jobs:
       - name: Deploy APK to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
           source: mobile/build/app/outputs/flutter-apk/app-release.apk
           target: /root/ugstream/backend/uploads/
@@ -81,7 +84,7 @@ jobs:
       - name: Rename to ham-watch.apk
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
           script: mv -f /root/ugstream/backend/uploads/app-release.apk /root/ugstream/backend/uploads/ham-watch.apk
