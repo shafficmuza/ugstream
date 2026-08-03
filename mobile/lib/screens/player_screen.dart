@@ -56,7 +56,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool _controlsVisible = true;
   bool _ready = false;
-  /// Brief center icon flashed on tap (play/pause) or double-tap (seek).
+  /// Brief centre icon flashed on a double-tap seek.
   IconData? _flashIcon;
 
   @override
@@ -106,18 +106,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  /// Netflix-style single tap: toggle play/pause and reveal the controls.
+  /// Show/hide the controls overlay (what a single tap does on Netflix).
+  void _toggleControls() {
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  /// Play/pause — driven by the centre button, not by tapping the video.
   void _togglePlay() {
     final v = _video;
     if (v == null || !v.value.isInitialized) return;
     if (v.value.isPlaying) {
       v.pause();
-      _flash(Icons.pause);
       _hideTimer?.cancel();
       setState(() => _controlsVisible = true);
     } else {
       v.play();
-      _flash(Icons.play_arrow);
       setState(() => _controlsVisible = true);
       _scheduleHide();
     }
@@ -171,15 +175,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 : const CircularProgressIndicator(color: Color(0xFFE50914)),
           ),
 
-          // Tap anywhere toggles play/pause. Deliberately NO double-tap
-          // gesture here: registering one makes Flutter delay every single
-          // tap ~300ms waiting for a second, which made resume feel broken.
-          // Seeking lives on the +/-10s buttons in the control bar instead.
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _togglePlay,
-            ),
+          // Netflix gesture model:
+          //  - single tap on the video toggles the controls overlay (playback
+          //    is unaffected); pausing is the big centre button below
+          //  - double tap on the left/right half seeks -10s/+10s
+          // Tap no longer pauses, so the ~300ms double-tap arbitration delay
+          // is imperceptible here.
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleControls,
+                  onDoubleTap: () => _seekBy(-10),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleControls,
+                  onDoubleTap: () => _seekBy(10),
+                ),
+              ),
+            ],
           ),
 
           // Center flash feedback for the last gesture.
@@ -189,6 +207,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
                 child: Icon(_flashIcon, color: Colors.white, size: 52),
+              ),
+            ),
+
+          // Centre play/pause — the primary control, like Netflix.
+          if (_ready)
+            AnimatedOpacity(
+              opacity: _controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: Center(
+                  child: Material(
+                    color: Colors.black45,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      iconSize: 56,
+                      padding: const EdgeInsets.all(14),
+                      icon: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                      onPressed: _togglePlay,
+                    ),
+                  ),
+                ),
               ),
             ),
 
