@@ -107,6 +107,27 @@ export function LoginForm() {
           <span aria-hidden>🤖</span> Download the Android app
         </a>
       )}
+
+      {process.env.NEXT_PUBLIC_IOS_APP_URL && (
+        <a
+          href={process.env.NEXT_PUBLIC_IOS_APP_URL}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginTop: 10,
+            padding: '10px 14px',
+            border: '1px solid #4a6f8a',
+            borderRadius: 6,
+            color: '#8ec3e6',
+            textDecoration: 'none',
+            fontSize: 14,
+          }}
+        >
+          <span aria-hidden>🍎</span> Get the iPhone app (TestFlight)
+        </a>
+      )}
     </div>
   );
 }

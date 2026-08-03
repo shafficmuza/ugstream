@@ -1,0 +1,49 @@
+name: Build iOS (unsigned compile check)
+
+# Validates the Flutter app compiles for iOS. Produces an UNSIGNED build —
+# it cannot be installed on a phone. Real iPhone testing requires an Apple
+# Developer account: then we add signing certs + TestFlight upload here
+# (fastlane), and the login page links to the TestFlight invite.
+#
+# Manual-trigger only: macOS runners bill at 10x GitHub-minutes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform folder
+        working-directory: mobile
+        run: |
+          flutter create --org com.sentepos --project-name ham_watch --platforms ios .
+          git checkout -- pubspec.yaml lib/main.dart || true
+          rm -f test/widget_test.dart
+
+      - name: Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Build iOS (no codesign)
+        working-directory: mobile
+        run: >
+          flutter build ios --release --no-codesign
+          --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+
+      - name: Upload build proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-runner-app
+          path: mobile/build/ios/iphoneos/Runner.app
