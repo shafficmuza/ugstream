@@ -1,0 +1,86 @@
+name: Build Android APK
+
+# Builds the Flutter APK whenever the mobile app changes (or on demand) and
+# deploys it to the server so the login page's "Download Android app" button
+# serves the latest build.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST      e.g. 95.111.232.148
+#   DEPLOY_USER      e.g. root
+#   DEPLOY_PASSWORD  the SSH password for that user
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # android/ is gitignored — generate it around the committed source,
+      # then restore our pubspec/main (flutter create may overwrite them).
+      - name: Generate Android platform folder
+        working-directory: mobile
+        run: |
+          flutter create --org com.sentepos --project-name ham_watch --platforms android .
+          git checkout -- pubspec.yaml lib/main.dart || true
+
+      - name: Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Tests
+        working-directory: mobile
+        run: flutter test
+
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+
+      - name: Build release APK
+        working-directory: mobile
+        run: >
+          flutter build apk --release
+          --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ham-watch-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+
+      # Drops the APK where the backend serves static uploads:
+      # https://ham.sentepos.com/api/uploads/ham-watch.apk
+      - name: Deploy APK to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          source: mobile/build/app/outputs/flutter-apk/app-release.apk
+          target: /root/ugstream/backend/uploads/
+          strip_components: 5
+
+      - name: Rename to ham-watch.apk
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          script: mv -f /root/ugstream/backend/uploads/app-release.apk /root/ugstream/backend/uploads/ham-watch.apk
