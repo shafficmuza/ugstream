@@ -21,17 +21,11 @@ platform :ios do
 
     setup_ci # ephemeral keychain for the runner
 
-    # Register the App ID + App Store Connect record on first run. Must
-    # succeed before match/pilot, so failures are NOT swallowed (a pre-existing
-    # app is detected and skipped by produce itself).
-    produce(
-      app_identifier: "com.sentepos.hamwatch",
-      app_name: "Ham Watch",
-      language: "en-US",
-      team_id: ENV.fetch("APPLE_TEAM_ID"),
-      sku: "hamwatch#{Time.now.to_i}",
-      skip_itc: false,
-    )
+    # NOTE: app creation is a ONE-TIME MANUAL step. fastlane's `produce`
+    # requires an Apple ID username (which forces interactive 2FA in CI), so
+    # instead create the app once in App Store Connect:
+    #   Bundle ID: com.sentepos.hamwatch   Name: Ham Watch   Platform: iOS
+    # After that, match + pilot below run fully unattended on the API key.
 
     # Certificates + provisioning, persisted on the ios-certs branch.
     match(
