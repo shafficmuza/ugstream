@@ -14,7 +14,6 @@ dependencies:
   provider: ^6.1.0               # simple state management (auth)
   cached_network_image: ^3.3.0   # poster/banner images
   video_player: ^2.8.0           # native HLS/MP4 playback (ExoPlayer/AVPlayer)
-  chewie: ^1.7.0                 # player controls UI on top of video_player
   url_launcher: ^6.2.0           # open hosted payment pages (card/DPO)
 
 dev_dependencies:
