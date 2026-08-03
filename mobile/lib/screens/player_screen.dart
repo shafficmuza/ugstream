@@ -171,24 +171,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 : const CircularProgressIndicator(color: Color(0xFFE50914)),
           ),
 
-          // Gesture layer: tap = play/pause, double-tap left/right = seek 10s.
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _togglePlay,
-                  onDoubleTap: () => _seekBy(-10),
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _togglePlay,
-                  onDoubleTap: () => _seekBy(10),
-                ),
-              ),
-            ],
+          // Tap anywhere toggles play/pause. Deliberately NO double-tap
+          // gesture here: registering one makes Flutter delay every single
+          // tap ~300ms waiting for a second, which made resume feel broken.
+          // Seeking lives on the +/-10s buttons in the control bar instead.
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _togglePlay,
+            ),
           ),
 
           // Center flash feedback for the last gesture.
