@@ -1,0 +1,57 @@
+name: Release iOS to TestFlight
+
+# Signed iPhone build → TestFlight. Manual trigger (macOS runners bill 10x).
+#
+# Required secrets (repo Secrets tab, or the existing bound environment):
+#   ASC_KEY_ID        App Store Connect API key's Key ID
+#   ASC_ISSUER_ID     App Store Connect Issuer ID
+#   ASC_KEY_P8        full contents of the downloaded AuthKey_xxx.p8
+#   APPLE_TEAM_ID     Apple Developer Team ID
+#   MATCH_PASSWORD    any strong passphrase (encrypts the stored certs)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    runs-on: macos-14
+    environment: DEPLOY_PASSWORD # exposes env-scoped secrets too
+    permissions:
+      contents: write # GITHUB_TOKEN pushes the encrypted certs branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform folder
+        working-directory: mobile
+        run: |
+          flutter create --org com.sentepos --project-name ham_watch --platforms ios .
+          git checkout -- pubspec.yaml lib/main.dart || true
+          rm -f test/widget_test.dart
+          # Pin the bundle id to what fastlane manages.
+          sed -i '' 's/com.sentepos.hamWatch/com.sentepos.hamwatch/g' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Dependencies + build (no codesign; fastlane signs)
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign \
+            --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+
+      - name: Fastlane beta (sign + upload to TestFlight)
+        working-directory: mobile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          # Certs live on this repo's ios-certs branch; GITHUB_TOKEN can push it.
+          MATCH_GIT_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          export MATCH_GIT_BASIC_AUTHORIZATION=$(printf 'x-access-token:%s' '${{ secrets.GITHUB_TOKEN }}' | base64)
+          fastlane ios beta

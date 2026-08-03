@@ -1,0 +1,59 @@
+# TestFlight release lane. Run from mobile/ (CI does this).
+#
+# Signing strategy: fastlane match with the certs stored on an orphan branch
+# ("ios-certs") of this same private repo — no separate certs repo needed.
+# Auth to App Store Connect is via API key (ASC_* env), never an Apple ID
+# password.
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Build a signed IPA and upload to TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_KEY_P8"),
+    )
+
+    setup_ci # ephemeral keychain for the runner
+
+    # Create the app record on first run (no-op if it already exists).
+    begin
+      produce(
+        api_key: api_key,
+        app_identifier: "com.sentepos.hamwatch",
+        app_name: "Ham Watch",
+        language: "en-US",
+        team_id: ENV.fetch("APPLE_TEAM_ID"),
+        skip_itc: false,
+      )
+    rescue => e
+      UI.important("produce skipped/failed (app may already exist): #{e.message}")
+    end
+
+    # Certificates + provisioning, persisted on the ios-certs branch.
+    match(
+      type: "appstore",
+      app_identifier: "com.sentepos.hamwatch",
+      api_key: api_key,
+      git_url: ENV.fetch("MATCH_GIT_URL"),
+      git_branch: "ios-certs",
+      git_basic_authorization: ENV.fetch("MATCH_GIT_BASIC_AUTHORIZATION"),
+      team_id: ENV.fetch("APPLE_TEAM_ID"),
+      readonly: false,
+    )
+
+    build_app(
+      workspace: "ios/Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "app-store",
+      output_directory: "build/ipa",
+    )
+
+    pilot(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end
