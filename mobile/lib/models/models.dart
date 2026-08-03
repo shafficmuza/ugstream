@@ -41,17 +41,17 @@ class TitleCard {
   final int? releaseYear;
   final String? firstEpisodeId;
 
-  factory TitleCard.fromJson(Map<String, dynamic> j) => TitleCard(
-        id: j['id'].toString(),
-        slug: j['slug'] ?? '',
-        name: j['name'] ?? '',
-        kind: j['kind'] ?? 'movie',
-        posterUrl: j['posterUrl'],
-        access: j['access'],
-        priceUgx: j['priceUgx'],
-        releaseYear: j['releaseYear'],
-        firstEpisodeId: j['firstEpisodeId']?.toString(),
-      );
+  // Generative (not factory) so subclasses like Billboard can super-call it.
+  TitleCard.fromJson(Map<String, dynamic> j)
+      : id = j['id'].toString(),
+        slug = j['slug'] ?? '',
+        name = j['name'] ?? '',
+        kind = j['kind'] ?? 'movie',
+        posterUrl = j['posterUrl'],
+        access = j['access'],
+        priceUgx = j['priceUgx'],
+        releaseYear = j['releaseYear'],
+        firstEpisodeId = j['firstEpisodeId']?.toString();
 }
 
 class Billboard extends TitleCard {

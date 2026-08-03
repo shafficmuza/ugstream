@@ -40,6 +40,7 @@ jobs:
         run: |
           flutter create --org com.sentepos --project-name ham_watch --platforms android .
           git checkout -- pubspec.yaml lib/main.dart || true
+          rm -f test/widget_test.dart   # default counter test doesn't apply
 
       - name: Dependencies
         working-directory: mobile
