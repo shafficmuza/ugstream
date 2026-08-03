@@ -1,3 +1,5 @@
+import '../core/config.dart';
+
 // Data models mirroring the ham/ugstream API responses.
 
 class User {
@@ -47,7 +49,7 @@ class TitleCard {
         slug = j['slug'] ?? '',
         name = j['name'] ?? '',
         kind = j['kind'] ?? 'movie',
-        posterUrl = j['posterUrl'],
+        posterUrl = AppConfig.absUrl(j['posterUrl']),
         access = j['access'],
         priceUgx = j['priceUgx'],
         releaseYear = j['releaseYear'],
@@ -57,7 +59,7 @@ class TitleCard {
 class Billboard extends TitleCard {
   Billboard.fromJson(Map<String, dynamic> j)
       : description = j['description'],
-        bannerUrl = j['bannerUrl'],
+        bannerUrl = AppConfig.absUrl(j['bannerUrl']),
         super.fromJson(j);
   final String? description;
   final String? bannerUrl;
@@ -141,8 +143,8 @@ class TitleDetail {
         description: j['description'],
         genres: ((j['genres'] as List?) ?? []).map((g) => g.toString()).toList(),
         episodes: ((j['episodes'] as List?) ?? []).map((e) => Episode.fromJson(e)).toList(),
-        posterUrl: j['posterUrl'],
-        bannerUrl: j['bannerUrl'],
+        posterUrl: AppConfig.absUrl(j['posterUrl']),
+        bannerUrl: AppConfig.absUrl(j['bannerUrl']),
         access: j['access'] ?? 'subscription',
         priceUgx: j['priceUgx'],
       );
@@ -190,9 +192,9 @@ class ContinueItem {
       episodeId: j['episodeId'].toString(),
       positionSecs: j['positionSecs'] ?? 0,
       durationSecs: j['durationSecs'],
-      thumbnailUrl: j['thumbnailUrl'],
+      thumbnailUrl: AppConfig.absUrl(j['thumbnailUrl']),
       kind: t['kind'],
-      title: TitleCard(id: '', slug: t['slug'] ?? '', name: t['name'] ?? '', kind: t['kind'] ?? 'movie', posterUrl: t['posterUrl']),
+      title: TitleCard(id: '', slug: t['slug'] ?? '', name: t['name'] ?? '', kind: t['kind'] ?? 'movie', posterUrl: AppConfig.absUrl(t['posterUrl'])),
     );
   }
   double get progress => (durationSecs != null && durationSecs! > 0) ? (positionSecs / durationSecs!).clamp(0, 1) : 0;

@@ -28,7 +28,7 @@ class Branding extends ChangeNotifier {
       final d = res.data;
       if (d is Map) {
         _appName = (d['appName'] as String?)?.trim().isNotEmpty == true ? d['appName'] : _appName;
-        _logoUrl = d['logoUrl'];
+        _logoUrl = AppConfig.absUrl(d['logoUrl']);
         _tagline = d['tagline'];
         notifyListeners();
       }

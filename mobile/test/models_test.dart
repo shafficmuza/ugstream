@@ -50,4 +50,24 @@ void main() {
     });
     expect(c.progress, 0.5);
   });
+
+  test('image URLs from the API are made absolute (native has no origin)', () {
+    final c = TitleCard.fromJson({
+      'id': 1, 'slug': 's', 'name': 'n', 'kind': 'movie',
+      'posterUrl': '/api/uploads/images/x.jpg',
+    });
+    expect(c.posterUrl, startsWith('https://'));
+    expect(c.posterUrl, endsWith('/api/uploads/images/x.jpg'));
+
+    // Already-absolute URLs (e.g. R2/Cloudflare) pass through untouched.
+    final abs = TitleCard.fromJson({
+      'id': 2, 'slug': 's', 'name': 'n', 'kind': 'movie',
+      'posterUrl': 'https://cdn.example.com/p.jpg',
+    });
+    expect(abs.posterUrl, 'https://cdn.example.com/p.jpg');
+
+    // Null stays null rather than becoming a broken origin-only URL.
+    final none = TitleCard.fromJson({'id': 3, 'slug': 's', 'name': 'n', 'kind': 'movie'});
+    expect(none.posterUrl, isNull);
+  });
 }

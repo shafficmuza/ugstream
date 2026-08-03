@@ -68,7 +68,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _chewie = ChewieController(
         videoPlayerController: v,
         autoPlay: true,
-        allowFullScreen: true,
+        // This screen IS the fullscreen player (landscape + immersive), so
+        // Chewie's own fullscreen would push a nested route that hides our
+        // back control — leaving iOS users with no way out (no system back).
+        allowFullScreen: false,
         allowedScreenSleep: false,
         materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914)),
       );
@@ -97,10 +100,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Center(
-        child: _chewie != null && _video!.value.isInitialized
-            ? Chewie(controller: _chewie!)
-            : const CircularProgressIndicator(color: Color(0xFFE50914)),
+      body: Stack(
+        children: [
+          Center(
+            child: _chewie != null && _video!.value.isInitialized
+                ? Chewie(controller: _chewie!)
+                : const CircularProgressIndicator(color: Color(0xFFE50914)),
+          ),
+          // Explicit exit control: iOS has no system back button, and the
+          // status bar is hidden here, so without this the player is a
+          // dead end. Always visible, above the player chrome.
+          Positioned(
+            top: 8,
+            left: 8,
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
+                  if (widget.play.titleName != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: Text(
+                        [widget.play.titleName, widget.play.epLabel].where((e) => e != null).join(' · '),
+                        style: const TextStyle(color: Colors.white, fontSize: 14, shadows: [Shadow(blurRadius: 6)]),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
