@@ -10,6 +10,14 @@ name: Release iOS to TestFlight
 #   MATCH_PASSWORD    any strong passphrase (encrypts the stored certs)
 
 on:
+  # Ship iOS on the same trigger as Android so the two platforms never drift
+  # apart. NOTE: macOS runners bill at 10x GitHub-minutes — switch back to
+  # dispatch-only if the allowance gets tight.
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/release-ios-testflight.yml'
   workflow_dispatch:
 
 jobs:
