@@ -38,14 +38,20 @@ export class AuthService {
   ) {}
 
   async requestOtp(phone: string): Promise<{ expiresInSeconds: number }> {
-    const since = new Date(Date.now() - 60 * 60 * 1000);
-    const recentCount = await this.prisma.otpCode.count({
-      where: { phone, expiresAt: { gt: since } },
-    });
-    if (recentCount >= OTP_REQUESTS_PER_HOUR) {
-      throw new BadRequestException(
-        'Too many codes requested for this number. Try again later.',
-      );
+    // The hourly cap exists to stop SMS spam/cost. While no SMS gateway is
+    // configured we issue the static test code and send nothing, so the cap
+    // only gets in the way of testing — enforce it just for real sends.
+    const smsReady = await this.sms.isConfigured();
+    if (smsReady) {
+      const since = new Date(Date.now() - 60 * 60 * 1000);
+      const recentCount = await this.prisma.otpCode.count({
+        where: { phone, expiresAt: { gt: since } },
+      });
+      if (recentCount >= OTP_REQUESTS_PER_HOUR) {
+        throw new BadRequestException(
+          'Too many codes requested for this number. Try again later.',
+        );
+      }
     }
 
     // OTP_STATIC_CODE is a dev/testing bypass (fixed code, no SMS) — a real
@@ -54,7 +60,6 @@ export class AuthService {
     // (see sms.service.ts) we ignore the bypass and always issue a random,
     // SMS-delivered code. So enabling SMS auto-secures login with no code
     // change. To disable the bypass without SMS too, set OTP_STATIC_CODE="".
-    const smsReady = await this.sms.isConfigured();
     const staticCode = this.config.get<string>('OTP_STATIC_CODE');
     const useStatic = !smsReady && !!staticCode;
 
