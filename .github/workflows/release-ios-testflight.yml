@@ -14,12 +14,18 @@ on:
 
 jobs:
   testflight:
-    runs-on: macos-14
+    runs-on: macos-latest
     environment: DEPLOY_PASSWORD # exposes env-scoped secrets too
     permissions:
       contents: write # GITHUB_TOKEN pushes the encrypted certs branch
     steps:
       - uses: actions/checkout@v4
+
+      # Apple requires builds with the iOS 26 SDK (Xcode 26+) for App Store
+      # Connect uploads — the runner's default Xcode is older.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - uses: subosito/flutter-action@v2
         with:
