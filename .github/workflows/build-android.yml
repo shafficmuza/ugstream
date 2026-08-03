@@ -41,9 +41,12 @@ jobs:
       - name: Generate Android platform folder
         working-directory: mobile
         run: |
-          flutter create --org com.sentepos --project-name ham_watch --platforms android .
+          flutter create --org com.prosystemsug --project-name ham_watch --platforms android .
           git checkout -- pubspec.yaml lib/main.dart || true
           rm -f test/widget_test.dart   # default counter test doesn't apply
+          # Match the store identity: com.prosystemsug.muzawatch / Muza Watch
+          sed -i 's/com\.prosystemsug\.ham_watch/com.prosystemsug.muzawatch/g' android/app/build.gradle* android/app/src/*/AndroidManifest.xml 2>/dev/null || true
+          sed -i 's/android:label="ham_watch"/android:label="Muza Watch"/g' android/app/src/main/AndroidManifest.xml || true
 
       - name: Dependencies
         working-directory: mobile

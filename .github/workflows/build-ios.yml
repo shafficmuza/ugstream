@@ -24,7 +24,7 @@ jobs:
       - name: Generate iOS platform folder
         working-directory: mobile
         run: |
-          flutter create --org com.sentepos --project-name ham_watch --platforms ios .
+          flutter create --org com.prosystemsug --project-name ham_watch --platforms ios .
           git checkout -- pubspec.yaml lib/main.dart || true
           rm -f test/widget_test.dart
 

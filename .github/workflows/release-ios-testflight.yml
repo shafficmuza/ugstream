@@ -29,11 +29,13 @@ jobs:
       - name: Generate iOS platform folder
         working-directory: mobile
         run: |
-          flutter create --org com.sentepos --project-name ham_watch --platforms ios .
+          flutter create --org com.prosystemsug --project-name ham_watch --platforms ios .
           git checkout -- pubspec.yaml lib/main.dart || true
           rm -f test/widget_test.dart
-          # Pin the bundle id to what fastlane manages.
-          sed -i '' 's/com.sentepos.hamWatch/com.sentepos.hamwatch/g' ios/Runner.xcodeproj/project.pbxproj
+          # Pin bundle id + home-screen name to the App Store record.
+          sed -i '' 's/com\.prosystemsug\.hamWatch/com.prosystemsug.muzawatch/g' ios/Runner.xcodeproj/project.pbxproj
+          plutil -replace CFBundleDisplayName -string 'Muza Watch' ios/Runner/Info.plist
+          plutil -replace CFBundleName -string 'Muza Watch' ios/Runner/Info.plist
 
       - name: Dependencies + build (no codesign; fastlane signs)
         working-directory: mobile

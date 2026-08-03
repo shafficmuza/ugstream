@@ -24,13 +24,13 @@ platform :ios do
     # NOTE: app creation is a ONE-TIME MANUAL step. fastlane's `produce`
     # requires an Apple ID username (which forces interactive 2FA in CI), so
     # instead create the app once in App Store Connect:
-    #   Bundle ID: com.sentepos.hamwatch   Name: Ham Watch   Platform: iOS
+    #   Bundle ID: com.prosystemsug.muzawatch   Name: Muza Watch   Platform: iOS
     # After that, match + pilot below run fully unattended on the API key.
 
     # Certificates + provisioning, persisted on the ios-certs branch.
     match(
       type: "appstore",
-      app_identifier: "com.sentepos.hamwatch",
+      app_identifier: "com.prosystemsug.muzawatch",
       api_key: api_key,
       git_url: ENV.fetch("MATCH_GIT_URL"),
       git_branch: "ios-certs",
