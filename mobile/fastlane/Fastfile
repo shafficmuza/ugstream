@@ -39,11 +39,26 @@ platform :ios do
       readonly: false,
     )
 
+    # flutter create emits a project with no DEVELOPMENT_TEAM and automatic
+    # signing, which xcodebuild rejects in CI. Point it at the team and the
+    # profile match just provisioned.
+    update_code_signing_settings(
+      path: "ios/Runner.xcodeproj",
+      use_automatic_signing: false,
+      team_id: ENV.fetch("APPLE_TEAM_ID"),
+      bundle_identifier: "com.prosystemsug.muzawatch",
+      profile_name: "match AppStore com.prosystemsug.muzawatch",
+      code_sign_identity: "Apple Distribution",
+      targets: ["Runner"],
+    )
+
     build_app(
       workspace: "ios/Runner.xcworkspace",
       scheme: "Runner",
       export_method: "app-store",
       output_directory: "build/ipa",
+      export_team_id: ENV.fetch("APPLE_TEAM_ID"),
+      xcargs: "DEVELOPMENT_TEAM=#{ENV.fetch('APPLE_TEAM_ID')} CODE_SIGN_STYLE=Manual",
     )
 
     pilot(
