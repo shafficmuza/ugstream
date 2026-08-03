@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/auth.dart';
+import 'core/branding.dart';
 import 'core/config.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell.dart';
@@ -15,8 +16,13 @@ class HamWatchApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => Auth(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => Auth()),
+        // App name/logo/tagline come from the admin-editable DB settings —
+        // never hardcoded, so a rename in the dashboard reaches the app.
+        ChangeNotifierProvider(create: (ctx) => Branding(ctx.read<Auth>().api)),
+      ],
       child: MaterialApp(
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,

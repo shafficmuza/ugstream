@@ -1,7 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/auth.dart';
-import '../core/config.dart';
+import '../core/branding.dart';
 
 /// Phone + OTP login. Two steps: enter phone → enter the code.
 class LoginScreen extends StatefulWidget {
@@ -52,9 +53,23 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('HAM WATCH',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFFE50914), fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                Builder(builder: (context) {
+                  final branding = context.watch<Branding>();
+                  return Column(children: [
+                    if (branding.logoUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: CachedNetworkImage(imageUrl: branding.logoUrl!, height: 44),
+                      ),
+                    Text(branding.appName.toUpperCase(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Color(0xFFE50914), fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    if (branding.tagline != null) ...[
+                      const SizedBox(height: 4),
+                      Text(branding.tagline!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                    ],
+                  ]);
+                }),
                 const SizedBox(height: 8),
                 const Text('Sign in with your phone number',
                     textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)),
@@ -91,7 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Text('Change number'),
                   ),
                 const SizedBox(height: 8),
-                Text(AppConfig.appName, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white24, fontSize: 12)),
+                Text(context.watch<Branding>().appName,
+                    textAlign: TextAlign.center, style: const TextStyle(color: Colors.white24, fontSize: 12)),
               ],
             ),
           ),
