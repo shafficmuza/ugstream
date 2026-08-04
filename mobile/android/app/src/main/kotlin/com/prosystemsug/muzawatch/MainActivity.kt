@@ -1,4 +1,4 @@
-package com.prosystemsug.ham_watch
+package com.prosystemsug.muzawatch
 
 import io.flutter.embedding.android.FlutterActivity
 
