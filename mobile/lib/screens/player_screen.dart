@@ -223,8 +223,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     color: Colors.black45,
                     shape: const CircleBorder(),
                     child: IconButton(
-                      iconSize: 56,
-                      padding: const EdgeInsets.all(14),
+                      iconSize: 64,
+                      padding: const EdgeInsets.all(18),
                       icon: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
                       onPressed: _togglePlay,
                     ),
@@ -237,7 +237,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           if (_ready && (value?.isBuffering ?? false))
             const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
 
-          // Top chrome: back + title.
+          // Top chrome: back at the top-left, AirPlay at the top-right,
+          // title between them. Kept out of the centre so it never competes
+          // with the play/pause button.
           AnimatedOpacity(
             opacity: _controlsVisible ? 1 : 0,
             duration: const Duration(milliseconds: 200),
@@ -245,39 +247,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ignoring: !_controlsVisible,
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Material(
                         color: Colors.black54,
                         shape: const CircleBorder(),
                         child: IconButton(
+                          iconSize: 30,
+                          padding: const EdgeInsets.all(12),
+                          constraints: const BoxConstraints(minWidth: 54, minHeight: 54),
                           icon: const Icon(Icons.arrow_back, color: Colors.white),
                           tooltip: 'Back',
                           onPressed: () => Navigator.of(context).maybePop(),
                         ),
                       ),
-                      // AirPlay picker (iOS only — Apple requires its own
-                      // native view for route selection).
-                      if (Platform.isIOS)
-                        Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          width: 44,
-                          height: 44,
-                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                          child: const UiKitView(viewType: 'airplay_button'),
-                        ),
                       if (widget.play.titleName != null)
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.only(left: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                             child: Text(
                               [widget.play.titleName, widget.play.epLabel].where((e) => e != null).join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 15, shadows: [Shadow(blurRadius: 6)]),
+                              style: const TextStyle(color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 6)]),
                             ),
                           ),
+                        )
+                      else
+                        const Spacer(),
+                      // AirPlay picker (iOS only — Apple requires its own
+                      // native view for route selection).
+                      if (Platform.isIOS)
+                        Container(
+                          width: 54,
+                          height: 54,
+                          padding: const EdgeInsets.all(9),
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          child: const UiKitView(viewType: 'airplay_button'),
                         ),
                     ],
                   ),
@@ -311,15 +319,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         Row(
                           children: [
                             IconButton(
+                              iconSize: 30,
                               icon: const Icon(Icons.replay_10, color: Colors.white),
                               onPressed: () => _seekBy(-10),
                             ),
                             IconButton(
-                              iconSize: 40,
-                              icon: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                              onPressed: _togglePlay,
-                            ),
-                            IconButton(
+                              iconSize: 30,
                               icon: const Icon(Icons.forward_10, color: Colors.white),
                               onPressed: () => _seekBy(10),
                             ),
