@@ -90,6 +90,21 @@ export default function EditTitlePage() {
   );
 }
 
+const cardStyle: React.CSSProperties = {
+  border: '1px solid #2a2a2a', borderRadius: 8, padding: '14px 16px', background: '#111',
+};
+const cardHeadStyle: React.CSSProperties = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  fontWeight: 600, fontSize: 15, marginBottom: 6,
+};
+const cardTextStyle: React.CSSProperties = {
+  opacity: 0.72, fontSize: 13, lineHeight: 1.55, marginBottom: 12,
+};
+const busyStyle: React.CSSProperties = { fontSize: 13, color: '#8ec3e6' };
+function pillStyle(bg: string, fg: string): React.CSSProperties {
+  return { background: bg, color: fg, fontSize: 11, padding: '3px 8px', borderRadius: 10, fontWeight: 600 };
+}
+
 function providerLabel(p?: string): string {
   if (p === 'r2_hls') return '4K · R2 (adaptive)';
   if (p === 'r2_file') return '4K · R2 (file)';
@@ -315,111 +330,136 @@ function EpisodesSection({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18 }}>{kind === 'series' ? 'Episodes' : 'Video'}</h2>
-        {(kind === 'series' || episodes.length === 0) && (
-          <button className="btn" onClick={() => setAdding(!adding)}>
-            {adding ? 'Cancel' : '+ Add ' + (kind === 'series' ? 'episode' : 'video')}
-          </button>
-        )}
-      </div>
+      <h2 style={{ fontSize: 18, marginBottom: 6 }}>{kind === 'series' ? 'Episodes' : 'Video'}</h2>
+      <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+        Pick the option that matches the file you have. Not sure? Use option 1 — it accepts almost
+        any format.
+      </p>
 
-      <form
-        onSubmit={importVideoFromUrl}
-        style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}
-      >
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <label style={labelStyle}>Import from a direct video URL (best for large files — no browser upload)</label>
-          <input
-            style={inputStyle}
-            type="url"
-            placeholder="https://…/movie.mp4"
-            value={importUrl}
-            onChange={(e) => setImportUrl(e.target.value)}
-          />
-        </div>
-        <button className="btn" style={{ marginBottom: 16 }} type="submit" disabled={importing || !importUrl.trim()}>
-          {importing ? 'Importing…' : 'Import'}
-        </button>
-      </form>
-
-      <div style={{ border: '1px solid #333', borderRadius: 6, padding: 16, marginBottom: 20 }}>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>Upload 4K (self-hosted on R2)</div>
-        <p style={{ opacity: 0.65, fontSize: 12.5, marginBottom: 12, maxWidth: 640 }}>
-          True 4K, delivered from your own R2 bucket (Cloudflare Stream caps at 1080p). Uploads go
-          straight from this browser to R2 in parts — large files are fine.
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-            <input
-              type="radio"
-              name="r2mode"
-              checked={r2Mode === 'file'}
-              onChange={() => setR2Mode('file')}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              <b>Ready 4K file (fast)</b> — upload an already-encoded <b>H.264 MP4</b>. Plays
-              immediately at its single 4K quality. HEVC/H.265 won&apos;t play in most browsers.
-            </span>
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-            <input
-              type="radio"
-              name="r2mode"
-              checked={r2Mode === 'ladder'}
-              onChange={() => setR2Mode('ladder')}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              <b>Pre-made HLS ladder (adaptive, recommended)</b> — you encode the adaptive folder on
-              your own machine/VDS, then pick the whole folder here. Full multi-quality streaming,{' '}
-              <b>no server transcode</b>. The folder must contain <code>master.m3u8</code>.
-            </span>
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-            <input
-              type="radio"
-              name="r2mode"
-              checked={r2Mode === 'transcode'}
-              onChange={() => setR2Mode('transcode')}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              <b>Transcode source (adaptive, slow)</b> — upload any source; <b>this server</b> builds
-              the ladder. Accepts any codec, but transcoding is <b>slow</b> (hours for a long film);
-              status shows “uploading” until it finishes. Prefer the pre-made ladder above.
-            </span>
-          </label>
-        </div>
-
-        {r2Busy ? (
-          <div style={{ fontSize: 13 }}>
-            {r2Phase} {r2Progress != null && `${r2Progress}%`}
+      {/* ---- Upload methods, one card per source format ---------------- */}
+      <div style={{ display: 'grid', gap: 12, marginBottom: 20 }}>
+        <div style={cardStyle}>
+          <div style={cardHeadStyle}>
+            <span>1 · Upload a video file</span>
+            <span style={pillStyle('#1c3d1c', '#7cd47c')}>Recommended</span>
           </div>
-        ) : r2Mode === 'ladder' ? (
-          <input
-            type="file"
-            ref={(el) => {
-              // webkitdirectory isn't in React's input types; set it directly
-              // so this picker selects a whole folder (the HLS ladder).
-              if (el) {
-                el.setAttribute('webkitdirectory', '');
-                el.setAttribute('directory', '');
-              }
-            }}
-            title="Select the folder containing master.m3u8 + variant playlists + segments"
-            onChange={(e) => e.target.files?.length && uploadLadder(e.target.files)}
-          />
-        ) : (
-          <input
-            type="file"
-            accept="video/*"
-            title="Browser-direct multipart upload to R2 — large 4K files supported"
-            onChange={(e) => e.target.files?.[0] && upload4k(e.target.files[0])}
-          />
-        )}
+          <p style={cardTextStyle}>
+            Accepts <b>MP4, MKV, MOV, AVI</b> and most other formats — the video is converted
+            automatically into multiple qualities that adapt to each viewer&apos;s connection.
+            Maximum quality is <b>1080p</b>. Use this unless you specifically need 4K.
+          </p>
+          {kind === 'series' || episodes.length === 0 ? (
+            <button className="btn" onClick={() => setAdding(!adding)}>
+              {adding ? 'Cancel' : `+ Add ${kind === 'series' ? 'episode' : 'video'}`}
+            </button>
+          ) : (
+            <p style={{ ...cardTextStyle, opacity: 0.5, marginBottom: 0 }}>
+              A video already exists below — use its row to replace the file.
+            </p>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={cardHeadStyle}>
+            <span>2 · Upload a ready 4K file</span>
+            <span style={pillStyle('#2a2a3d', '#8ec3e6')}>4K · fastest</span>
+          </div>
+          <p style={cardTextStyle}>
+            For video you have <b>already encoded yourself</b>. Must be an <b>MP4 using H.264</b> —
+            it is served exactly as uploaded, so other formats (MKV, HEVC/H.265) will not play.
+            Streams at one fixed quality with no conversion wait.
+          </p>
+          {r2Busy && r2Mode === 'file' ? (
+            <div style={busyStyle}>{r2Phase} {r2Progress != null && `${r2Progress}%`}</div>
+          ) : (
+            <input
+              type="file"
+              accept="video/mp4"
+              disabled={r2Busy}
+              onChange={(e) => {
+                setR2Mode('file');
+                if (e.target.files?.[0]) upload4k(e.target.files[0]);
+              }}
+            />
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={cardHeadStyle}>
+            <span>3 · Upload a pre-made HLS folder</span>
+            <span style={pillStyle('#2a2a3d', '#8ec3e6')}>4K · adaptive</span>
+          </div>
+          <p style={cardTextStyle}>
+            Best quality option: you encode the adaptive ladder on your own machine, then select the
+            whole folder here. It must contain <b><code>master.m3u8</code></b> plus the quality
+            sub-folders. Gives true 4K that adapts to each connection, with no server conversion.
+            See <b>Guide → Encode a 4K ladder</b> for the exact command.
+          </p>
+          {r2Busy && r2Mode === 'ladder' ? (
+            <div style={busyStyle}>{r2Phase} {r2Progress != null && `${r2Progress}%`}</div>
+          ) : (
+            <input
+              type="file"
+              disabled={r2Busy}
+              ref={(el) => {
+                if (el) {
+                  el.setAttribute('webkitdirectory', '');
+                  el.setAttribute('directory', '');
+                }
+              }}
+              onChange={(e) => {
+                setR2Mode('ladder');
+                if (e.target.files?.length) uploadLadder(e.target.files);
+              }}
+            />
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={cardHeadStyle}><span>4 · Import from a link</span></div>
+          <p style={cardTextStyle}>
+            Paste a <b>direct link to the video file</b> (one that downloads the file itself, ending
+            in .mp4/.mkv). The server fetches it — ideal for very large files since nothing uploads
+            from your browser. Page links (YouTube, Google Drive, Dropbox) will not work.
+          </p>
+          <form onSubmit={importVideoFromUrl} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              style={{ ...inputStyle, flex: 1, minWidth: 220, marginBottom: 0 }}
+              type="url"
+              placeholder="https://example.com/movie.mp4"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+            />
+            <button className="btn" type="submit" disabled={importing || !importUrl.trim()}>
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </form>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={cardHeadStyle}>
+            <span>5 · Convert a 4K source on the server</span>
+            <span style={pillStyle('#3d2f1c', '#ffb020')}>Slow</span>
+          </div>
+          <p style={cardTextStyle}>
+            Upload any 4K source and the server builds the adaptive ladder itself. Accepts any
+            format, but conversion is <b>slow — often hours for a full film</b>, and the video shows
+            as &ldquo;uploading&rdquo; until it finishes. Prefer option 3 when you can.
+          </p>
+          {r2Busy && r2Mode === 'transcode' ? (
+            <div style={busyStyle}>{r2Phase} {r2Progress != null && `${r2Progress}%`}</div>
+          ) : (
+            <input
+              type="file"
+              accept="video/*"
+              disabled={r2Busy}
+              onChange={(e) => {
+                setR2Mode('transcode');
+                if (e.target.files?.[0]) upload4k(e.target.files[0]);
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {adding && (

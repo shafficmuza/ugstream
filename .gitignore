@@ -11,3 +11,9 @@ dist/
 backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/*/.gitkeep
+
+# Scratch space for server-side media conversion
+work/
+backend/up72.mjs
+backend/fix72.sh
+yt/
