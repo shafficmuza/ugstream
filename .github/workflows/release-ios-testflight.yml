@@ -40,16 +40,18 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate iOS platform folder
+      - name: Ensure iOS platform folder
         working-directory: mobile
         run: |
-          flutter create --org com.prosystemsug --project-name ham_watch --platforms ios .
-          git checkout -- pubspec.yaml lib/main.dart || true
-          rm -f test/widget_test.dart
-          # Pin bundle id + home-screen name to the App Store record.
-          sed -i '' 's/com\.prosystemsug\.hamWatch/com.prosystemsug.muzawatch/g' ios/Runner.xcodeproj/project.pbxproj
-          plutil -replace CFBundleDisplayName -string 'Muza Watch' ios/Runner/Info.plist
-          plutil -replace CFBundleName -string 'Muza Watch' ios/Runner/Info.plist
+          # ios/ is committed (see scaffold-platforms.yml) so native config
+          # survives. Only regenerate if it is somehow absent.
+          if [ ! -d ios ]; then
+            flutter create --org com.prosystemsug --project-name ham_watch --platforms ios .
+            git checkout -- pubspec.yaml lib/main.dart || true
+            rm -f test/widget_test.dart
+            sed -i '' 's/com\.prosystemsug\.hamWatch/com.prosystemsug.muzawatch/g' ios/Runner.xcodeproj/project.pbxproj
+            plutil -replace CFBundleDisplayName -string 'Muza Watch' ios/Runner/Info.plist
+          fi
 
       - name: Dependencies + build (no codesign; fastlane signs)
         working-directory: mobile

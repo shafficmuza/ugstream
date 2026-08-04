@@ -4,7 +4,7 @@
 # audio is converted to AAC, which HLS/AVPlayer require.
 set -e
 SRC="https://pub-554362ac6de74eb7816dfb210c110399.r2.dev/files/fad656ab-7b91-4690-a3bf-7dd0b4e0cec6-72-HOURS-EMMY.mkv"
-OUT=/tmp/hls72
+OUT=/root/ugstream/work/hls72
 rm -rf $OUT && mkdir -p $OUT/stream_0
 ffmpeg -hide_banner -y -i "$SRC" \
   -map 0:v:0 -map 0:a:0 \

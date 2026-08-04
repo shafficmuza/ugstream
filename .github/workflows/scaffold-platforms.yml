@@ -1,0 +1,65 @@
+name: Scaffold platform folders (one-time)
+
+# Generates mobile/android and mobile/ios ONCE and commits them, so they stop
+# being regenerated on every build. Required before adding anything that needs
+# native configuration — Chromecast SDK, AirPlay route view, local-network
+# permissions, background downloads — since generated folders lose those edits.
+#
+# Safe to re-run: it regenerates only what's missing and commits any diff.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scaffold:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate android/ + ios/
+        working-directory: mobile
+        run: |
+          flutter create --org com.prosystemsug --project-name ham_watch --platforms android,ios .
+          # flutter create overwrites these with its defaults — keep ours.
+          git checkout -- pubspec.yaml lib/main.dart || true
+          rm -f test/widget_test.dart
+
+          # Bake in the store identity so builds no longer patch it each time.
+          sed -i '' 's/com\.prosystemsug\.hamWatch/com.prosystemsug.muzawatch/g' ios/Runner.xcodeproj/project.pbxproj
+          plutil -replace CFBundleDisplayName -string 'Muza Watch' ios/Runner/Info.plist
+          plutil -replace CFBundleName -string 'Muza Watch' ios/Runner/Info.plist
+          sed -i '' 's/com\.prosystemsug\.ham_watch/com.prosystemsug.muzawatch/g' \
+            android/app/build.gradle* android/app/src/*/AndroidManifest.xml 2>/dev/null || true
+          sed -i '' 's/android:label="ham_watch"/android:label="Muza Watch"/g' \
+            android/app/src/main/AndroidManifest.xml || true
+
+      - name: Stop ignoring the platform folders
+        working-directory: mobile
+        run: |
+          # They are committed from now on; keep build output ignored.
+          sed -i '' '/^android\/$/d;/^ios\/$/d' .gitignore
+          printf 'android/.gradle/\nandroid/local.properties\nios/Pods/\nios/.symlinks/\nios/Flutter/Flutter.podspec\n' >> .gitignore
+
+      - name: Commit
+        run: |
+          git config user.name  'Shaffic Muzanganda'
+          git config user.email 'shafficmuza@gmail.com'
+          git add mobile/android mobile/ios mobile/.gitignore
+          git commit -m "Commit Flutter platform folders so native config persists
+
+Generated once by the scaffold workflow with the Muza Watch identity baked
+in (com.prosystemsug.muzawatch). Builds previously ran flutter create every
+time, which wiped any native changes — blocking Chromecast, AirPlay and
+offline downloads. These folders are now version-controlled." || echo "nothing to commit"
+          git push
