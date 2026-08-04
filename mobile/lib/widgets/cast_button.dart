@@ -127,7 +127,7 @@ class _CastButtonState extends State<CastButton> {
         GoogleCastMediaInformationIOS(
           contentId: widget.streamUrl,
           contentUrl: Uri.parse(widget.streamUrl),
-          streamType: CastMediaStreamType.BUFFERED,
+          streamType: CastMediaStreamType.buffered,
           contentType: widget.streamUrl.contains('.m3u8')
               ? 'application/x-mpegURL'
               : 'video/mp4',
