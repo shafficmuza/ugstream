@@ -56,10 +56,8 @@ jobs:
           git config user.name  'Shaffic Muzanganda'
           git config user.email 'shafficmuza@gmail.com'
           git add mobile/android mobile/ios mobile/.gitignore
-          git commit -m "Commit Flutter platform folders so native config persists
-
-Generated once by the scaffold workflow with the Muza Watch identity baked
-in (com.prosystemsug.muzawatch). Builds previously ran flutter create every
-time, which wiped any native changes — blocking Chromecast, AirPlay and
-offline downloads. These folders are now version-controlled." || echo "nothing to commit"
+          git commit \
+            -m "Commit Flutter platform folders so native config persists" \
+            -m "Generated once with the Muza Watch identity baked in. Builds previously ran flutter create every time, wiping native changes — blocking Chromecast, AirPlay and offline downloads. These folders are now version-controlled." \
+            || echo "nothing to commit"
           git push
