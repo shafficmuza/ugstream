@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 
 /// Chromecast button + device picker.
@@ -42,9 +43,15 @@ class _CastButtonState extends State<CastButton> {
   Future<void> _init() async {
     try {
       // Default Media Receiver — plays HLS/MP4 without a custom receiver app.
-      await GoogleCastOptionsAndroid.setSharedInstanceWithOptions(
-        GoogleCastOptionsAndroid(appId: 'CC1AD845'),
-      );
+      const appId = GoogleCastDiscoveryCriteria.kDefaultApplicationId;
+      final GoogleCastOptions options = Platform.isIOS
+          ? IOSGoogleCastOptions(
+              GoogleCastDiscoveryCriteriaInitialize.initWithApplicationID(appId),
+              stopCastingOnAppTerminated: true,
+            )
+          : GoogleCastOptionsAndroid(appId: appId, stopCastingOnAppTerminated: true);
+      await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
+
       _sessionSub = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
         final connected = session?.connectionState == GoogleCastConnectState.connected;
         if (mounted && connected != _connected) setState(() => _connected = connected);
@@ -64,45 +71,52 @@ class _CastButtonState extends State<CastButton> {
 
   Future<void> _openPicker() async {
     try {
-      await GoogleCastDiscoveryManager.instance.startDiscovery();
-      final devices = GoogleCastDiscoveryManager.instance.devices;
+      GoogleCastDiscoveryManager.instance.startDiscovery();
+      // Give discovery a moment to find devices on the network.
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
 
       final device = await showModalBottomSheet<GoogleCastDevice>(
         context: context,
         backgroundColor: const Color(0xFF141414),
         builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Cast to', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              ),
-              if (devices.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  child: Text(
-                    'No devices found. Make sure your Chromecast is on the same Wi-Fi network.',
-                    style: TextStyle(color: Colors.white54),
+          child: StreamBuilder<List<GoogleCastDevice>>(
+            stream: GoogleCastDiscoveryManager.instance.devicesStream,
+            builder: (ctx, snap) {
+              final devices = snap.data ?? const <GoogleCastDevice>[];
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Cast to', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   ),
-                ),
-              for (final d in devices)
-                ListTile(
-                  leading: const Icon(Icons.tv),
-                  title: Text(d.friendlyName),
-                  onTap: () => Navigator.of(ctx).pop(d),
-                ),
-              if (_connected)
-                ListTile(
-                  leading: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent),
-                  title: const Text('Stop casting', style: TextStyle(color: Colors.redAccent)),
-                  onTap: () {
-                    GoogleCastSessionManager.instance.endSessionAndStopCasting();
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-            ],
+                  if (devices.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      child: Text(
+                        'Searching… make sure your Chromecast is on the same Wi-Fi network.',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                  for (final d in devices)
+                    ListTile(
+                      leading: const Icon(Icons.tv),
+                      title: Text(d.friendlyName),
+                      onTap: () => Navigator.of(ctx).pop(d),
+                    ),
+                  if (_connected)
+                    ListTile(
+                      leading: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent),
+                      title: const Text('Stop casting', style: TextStyle(color: Colors.redAccent)),
+                      onTap: () {
+                        GoogleCastSessionManager.instance.endSessionAndStopCasting();
+                        Navigator.of(ctx).pop();
+                      },
+                    ),
+                ],
+              );
+            },
           ),
         ),
       );
@@ -113,7 +127,7 @@ class _CastButtonState extends State<CastButton> {
         GoogleCastMediaInformationIOS(
           contentId: widget.streamUrl,
           contentUrl: Uri.parse(widget.streamUrl),
-          streamType: CastMediaStreamType.buffered,
+          streamType: CastMediaStreamType.BUFFERED,
           contentType: widget.streamUrl.contains('.m3u8')
               ? 'application/x-mpegURL'
               : 'video/mp4',

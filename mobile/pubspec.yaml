@@ -15,7 +15,7 @@ dependencies:
   cached_network_image: ^3.3.0   # poster/banner images
   video_player: ^2.8.0           # native HLS/MP4 playback (ExoPlayer/AVPlayer)
   url_launcher: ^6.2.0           # open hosted payment pages (card/DPO)
-  flutter_chrome_cast: ^2.4.0    # Google Cast (Chromecast) on Android + iOS
+  flutter_chrome_cast: ^1.4.6    # Google Cast (Chromecast) on Android + iOS
 
 dev_dependencies:
   flutter_test:
