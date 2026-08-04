@@ -30,10 +30,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Google Cast: points the SDK at CastOptionsProvider above. -->
+        <!-- Google Cast: use the options provider shipped by the
+             flutter_chrome_cast plugin, which is configured at runtime from
+             Dart. The plugin keeps play-services-cast as an `implementation`
+             dependency, so an app-module class cannot reference the SDK. -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="com.prosystemsug.ham_watch.CastOptionsProvider" />
+            android:value="com.felnanuke.google_cast.GoogleCastOptionsProvider" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
