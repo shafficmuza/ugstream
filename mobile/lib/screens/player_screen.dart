@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -256,6 +257,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onPressed: () => Navigator.of(context).maybePop(),
                         ),
                       ),
+                      // AirPlay picker (iOS only — Apple requires its own
+                      // native view for route selection).
+                      if (Platform.isIOS)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          width: 44,
+                          height: 44,
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          child: const UiKitView(viewType: 'airplay_button'),
+                        ),
                       if (widget.play.titleName != null)
                         Expanded(
                           child: Padding(
