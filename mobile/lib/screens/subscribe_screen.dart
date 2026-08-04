@@ -97,9 +97,28 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
   String get _phoneText => _phone.text.trim();
   void _snack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  /// Open a hosted payment page. Deliberately does NOT gate on
+  /// canLaunchUrl(): on Android 11+ that returns false unless the target
+  /// intent is declared in the manifest, which made card payments silently
+  /// do nothing. Try to launch, fall back to an in-app browser, and surface
+  /// a real error instead of failing quietly.
   Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (ok) return;
+    } catch (_) {
+      // fall through to the in-app browser
+    }
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      if (ok) return;
+    } catch (_) {
+      // fall through to the error below
+    }
+    if (mounted) {
+      _snack('Could not open the payment page. Check you have a browser installed.');
+    }
   }
 
   @override
