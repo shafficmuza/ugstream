@@ -8,6 +8,7 @@ import '../core/api_client.dart';
 import '../core/auth.dart';
 import '../models/models.dart';
 import '../services/catalog.dart';
+import '../widgets/cast_button.dart';
 import 'subscribe_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -277,6 +278,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         )
                       else
                         const Spacer(),
+                      // Chromecast (both platforms). Pauses local playback
+                      // when a cast starts so audio isn't doubled.
+                      CastButton(
+                        streamUrl: widget.play.playbackUrl,
+                        title: widget.play.titleName ?? 'Muza Watch',
+                        startAtSeconds: _video?.value.position.inSeconds ?? 0,
+                        onCastStarted: () => _video?.pause(),
+                      ),
+                      const SizedBox(width: 8),
                       // AirPlay picker (iOS only — Apple requires its own
                       // native view for route selection).
                       if (Platform.isIOS)
