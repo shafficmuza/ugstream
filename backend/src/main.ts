@@ -28,6 +28,14 @@ async function bootstrap() {
   fs.mkdirSync(path.join(process.cwd(), 'uploads', 'backgrounds'), { recursive: true });
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
+  // Media dropped in over SFTP and published by muza-publish-uploads.sh.
+  // Served read-only so an uploaded file has a direct, importable URL:
+  //   https://ham.sentepos.com/api/media/<file>
+  const mediaDir = process.env.MEDIA_PUBLIC_DIR ?? '/srv/muza-media';
+  if (fs.existsSync(mediaDir)) {
+    app.useStaticAssets(mediaDir, { prefix: '/media' });
+  }
+
   app.use(
     express.json({
       verify: (req: any, _res, buf) => {

@@ -11,6 +11,7 @@ const NAV = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/docs', label: 'Guide' },
   { href: '/admin/titles', label: 'Titles' },
+  { href: '/admin/media', label: 'Uploads' },
   { href: '/admin/genres', label: 'Genres' },
   { href: '/admin/kinds', label: 'Kinds' },
   { href: '/admin/activity', label: 'Activity', adminOnly: true },
