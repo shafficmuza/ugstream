@@ -7,10 +7,13 @@ build/
 *.iml
 .idea/
 # Generated platform folders (run `flutter create .` to regenerate)
-android/
-ios/
 linux/
 macos/
 windows/
 web/
 pubspec.lock
+android/.gradle/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.podspec
