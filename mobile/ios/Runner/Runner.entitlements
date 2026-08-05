@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- APNs environment. "production" is what an App Store / TestFlight
+	     distribution profile requires; a development profile would need
+	     "development" instead. The only signed builds this project makes go
+	     to TestFlight via fastlane, so production is the correct value here.
+
+	     This entitlement only validates if the App ID
+	     com.prosystemsug.muzawatch has the Push Notifications capability
+	     enabled in the Apple Developer portal — otherwise signing fails with
+	     "provisioning profile doesn't include the aps-environment
+	     entitlement". fastlane match can regenerate the profile, but it
+	     cannot turn the capability on. -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

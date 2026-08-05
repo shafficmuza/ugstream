@@ -12,6 +12,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by flutter_local_notifications 17+, which uses java.time
+        // APIs that do not exist on older Android versions. Without this the
+        // Android build fails outright.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -40,6 +44,18 @@ kotlin {
     }
 }
 
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+
 flutter {
     source = "../.."
+}
+
+// Firebase/FCM. The Google Services plugin aborts the build outright when
+// google-services.json is absent, so it is applied only once the file has
+// actually been added. Until then the app builds and runs exactly as before,
+// simply without push — which keeps CI green while Firebase is being set up.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

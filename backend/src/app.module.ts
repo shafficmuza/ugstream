@@ -17,6 +17,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { SettingsModule } from './settings/settings.module';
 import { MediaModule } from './media/media.module';
 import { AdminModule } from './admin/admin.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ActivityInterceptor } from './common/activity.interceptor';
 import { HealthController } from './common/health.controller';
 
@@ -39,6 +40,7 @@ import { HealthController } from './common/health.controller';
     SettingsModule,
     MediaModule,
     AdminModule,
+    NotificationsModule,
   ],
   controllers: [HealthController],
   providers: [

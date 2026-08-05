@@ -37,6 +37,13 @@ platform :ios do
       git_basic_authorization: ENV.fetch("MATCH_GIT_BASIC_AUTHORIZATION"),
       team_id: ENV.fetch("APPLE_TEAM_ID"),
       readonly: false,
+      # A capability added to the App ID (Push Notifications) does not appear
+      # in an already-issued profile, and match only checks a profile's
+      # validity and expiry — never its entitlements — so it would happily
+      # reuse the stale one and signing would fail on aps-environment.
+      # Forcing a reissue is what picks the new capability up.
+      # Safe to set back to false once a signed build has succeeded.
+      force: true,
     )
 
     # flutter create emits a project with no DEVELOPMENT_TEAM and automatic

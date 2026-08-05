@@ -11,6 +11,8 @@ export interface UpdateSettingsInput {
   authBackgroundUrl?: string;
   mobileMoneyProvider?: string;
   smsProvider?: string;
+  pushEnabled?: boolean;
+  pushAudience?: string;
 }
 
 @Injectable()

@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, Logger, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -8,16 +8,20 @@ import { PublishTitleDto } from './dto/publish-title.dto';
 import { EpisodesService } from '../episodes/episodes.service';
 import { ActivityService } from '../common/activity.service';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
+import { NotificationsService } from '../notifications/notifications.service';
 
 // Staff (admin OR editor) can list/create/edit/publish. Delete stacks
 // AdminGuard on top (all guards must pass) so it stays admin-only.
 @UseGuards(JwtAuthGuard, StaffGuard)
 @Controller('admin/titles')
 export class AdminTitlesController {
+  private readonly logger = new Logger(AdminTitlesController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly episodes: EpisodesService,
     private readonly activity: ActivityService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Get()
@@ -106,11 +110,26 @@ export class AdminTitlesController {
   }
 
   @Patch(':id/publish')
-  async publish(@Param('id') id: string, @Body() body: PublishTitleDto) {
+  async publish(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Body() body: PublishTitleDto,
+  ) {
     const title = await this.prisma.title.update({
       where: { id: BigInt(id) },
       data: { published: body.published },
     });
+
+    // Announce a newly published title. The service decides whether anything
+    // actually goes out (first publish only, push enabled, Firebase set up),
+    // and never throws — publishing must succeed even if push is broken or
+    // was never configured.
+    if (body.published) {
+      this.notifications
+        .announceTitle(title.id, { actorId: auth.userId })
+        .catch((err) => this.logger.error(`Announce failed: ${err.message}`));
+    }
+
     return { ...title, id: title.id.toString() };
   }
 

@@ -36,6 +36,13 @@ model AppSettings {
   // Active SMS/OTP gateway: 'africastalking' | 'twilio'. Credentials live in
   // the secrets store; admin flips this in the UI.
   smsProvider       String   @default("africastalking") @map("sms_provider") @db.VarChar(20)
+  // Push notifications. `pushEnabled` is the master switch so a noisy release
+  // can be silenced without a deploy. `pushAudience` is 'all' | 'subscribers':
+  // new-title alerts default to everyone because they are the main lever for
+  // converting signed-up-but-not-paying users, but that is a business call an
+  // admin may want to reverse.
+  pushEnabled       Boolean  @default(true) @map("push_enabled")
+  pushAudience      String   @default("all") @map("push_audience") @db.VarChar(20)
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
@@ -67,6 +74,51 @@ model Secret {
   @@map("secrets")
 }
 
+enum DevicePlatform {
+  android
+  ios
+  web
+}
+
+// One row per app install that can receive push. The FCM registration token
+// is the identity, not the user: tokens rotate, survive logout, and a shared
+// phone can carry several accounts over time. `userId` is therefore nullable
+// and re-pointed on each register call, so a token always belongs to whoever
+// last signed in on that device — which is who should see the notification.
+model Device {
+  id         BigInt         @id @default(autoincrement())
+  token      String         @unique
+  platform   DevicePlatform
+  userId     BigInt?        @map("user_id")
+  user       User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appVersion String?        @map("app_version") @db.VarChar(20)
+  lastSeenAt DateTime       @default(now()) @map("last_seen_at")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// Send history. Kept so admins can see what went out, resend a announcement,
+// and so the app can later show an in-app inbox without a second source of
+// truth. Counts are recorded per send rather than derived, because FCM only
+// reports per-token success at the moment of sending.
+model Notification {
+  id          BigInt   @id @default(autoincrement())
+  title       String   @db.VarChar(120)
+  body        String   @db.VarChar(400)
+  titleId     BigInt?  @map("title_id")
+  titleRef    Title?   @relation(fields: [titleId], references: [id], onDelete: SetNull)
+  audience    String   @default("all") @db.VarChar(20)
+  sentCount   Int      @default(0) @map("sent_count")
+  failedCount Int      @default(0) @map("failed_count")
+  createdBy   BigInt?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("notifications")
+}
+
 enum UserRole {
   user
   editor
@@ -94,6 +146,7 @@ model User {
   purchases     Purchase[]
   watchHistory  WatchHistory[]
   myList        MyListItem[]
+  devices       Device[]
 
   @@map("users")
 }
@@ -159,12 +212,18 @@ model Title {
   priceUgx     Int?         @map("price_ugx")
   rentalHours  Int          @default(72) @map("rental_hours")
   published    Boolean      @default(false)
+  // When the "new title" push went out. Publishing is a toggle an admin may
+  // flip several times while fixing artwork or episodes, so this is what
+  // stops every flip from re-notifying the whole user base. A deliberate
+  // re-announcement goes through the admin resend action instead.
+  notifiedAt   DateTime?    @map("notified_at")
   createdAt    DateTime     @default(now()) @map("created_at")
 
-  episodes    Episode[]
-  genres      TitleGenre[]
-  purchases   Purchase[]
-  myListItems MyListItem[]
+  episodes      Episode[]
+  genres        TitleGenre[]
+  purchases     Purchase[]
+  myListItems   MyListItem[]
+  notifications Notification[]
 
   @@index([published, kind, language])
   @@map("titles")

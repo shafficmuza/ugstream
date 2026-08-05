@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "165629871255",
+    "project_id": "muza-watch",
+    "storage_bucket": "muza-watch.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:165629871255:android:091389ec2cae3a790215d2",
+        "android_client_info": {
+          "package_name": "com.prosystemsug.muzawatch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrUgkgvhU8CXieJg04NsHHA5nqkCncdxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

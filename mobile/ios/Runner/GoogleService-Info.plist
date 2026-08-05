@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>API_KEY</key>
+    <string>AIzaSyCRE8PS5CTqz9e9C45YtSS9QvZsM5lFWgI</string>
+    <key>GCM_SENDER_ID</key>
+    <string>165629871255</string>
+    <key>PLIST_VERSION</key>
+    <string>1</string>
+    <key>BUNDLE_ID</key>
+    <string>com.prosystemsug.muzawatch</string>
+    <key>PROJECT_ID</key>
+    <string>muza-watch</string>
+    <key>STORAGE_BUCKET</key>
+    <string>muza-watch.firebasestorage.app</string>
+    <key>IS_ADS_ENABLED</key>
+    <false></false>
+    <key>IS_ANALYTICS_ENABLED</key>
+    <false></false>
+    <key>IS_APPINVITE_ENABLED</key>
+    <true></true>
+    <key>IS_GCM_ENABLED</key>
+    <true></true>
+    <key>IS_SIGNIN_ENABLED</key>
+    <true></true>
+    <key>GOOGLE_APP_ID</key>
+    <string>1:165629871255:ios:e8cf12704bfeb3430215d2</string>
+</dict>
+</plist>

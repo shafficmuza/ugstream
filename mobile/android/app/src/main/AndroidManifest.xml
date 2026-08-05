@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 13+ will not show any notification without this granted at
+         runtime; the app requests it on first launch. Declining is handled. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:label="Muza Watch"
         android:name="${applicationName}"
@@ -43,6 +47,14 @@
             android:name="com.google.android.gms.cast.framework.media.MediaNotificationService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Channel used for notifications that arrive while the app is in the
+             background. Must match the channelId the backend sends and the one
+             created in push.dart, otherwise Android drops them into a silent
+             default channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="new_titles" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
@@ -27,4 +27,10 @@ export class UpdateSettingsDto {
 
   @IsOptional() @IsString()
   authBackgroundUrl?: string;
+
+  @IsOptional() @IsBoolean()
+  pushEnabled?: boolean;
+
+  @IsOptional() @IsIn(['all', 'subscribers'])
+  pushAudience?: string;
 }

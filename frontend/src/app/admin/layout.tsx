@@ -18,6 +18,7 @@ const NAV = [
   { href: '/admin/plans', label: 'Plans', adminOnly: true },
   { href: '/admin/users', label: 'Users', adminOnly: true },
   { href: '/admin/payments', label: 'Payments', adminOnly: true },
+  { href: '/admin/notifications', label: 'Notifications', adminOnly: true },
   { href: '/admin/settings', label: 'Settings', adminOnly: true },
 ];
 

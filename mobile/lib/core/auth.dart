@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'api_client.dart';
+import 'push.dart';
 import 'token_store.dart';
 import '../models/models.dart';
 
@@ -8,11 +9,13 @@ class Auth extends ChangeNotifier {
   Auth() {
     _tokens = TokenStore();
     api = ApiClient(_tokens)..onSessionExpired = _onExpired;
+    push = Push(api);
     _bootstrap();
   }
 
   late final TokenStore _tokens;
   late final ApiClient api;
+  late final Push push;
 
   User? _user;
   bool _loading = true;
@@ -30,6 +33,9 @@ class Auth extends ChangeNotifier {
     await _loadMe();
     _loading = false;
     notifyListeners();
+    // Only after a session is known good: /devices is authenticated, so
+    // registering earlier would just 401.
+    if (_user != null) await push.onSignedIn();
   }
 
   Future<void> _loadMe() async {
@@ -56,6 +62,7 @@ class Auth extends ChangeNotifier {
     await _tokens.save(res.data['accessToken'], res.data['refreshToken']);
     _user = User.fromJson(res.data['user']);
     notifyListeners();
+    await push.onSignedIn();
   }
 
   Future<void> updateProfile({required String displayName, String? email, String? address}) async {
@@ -74,6 +81,10 @@ class Auth extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    // Drop the push token first: after the tokens are cleared the DELETE
+    // would be unauthenticated, and the handset would keep receiving the
+    // signed-out user's notifications.
+    await push.onSignedOut();
     try {
       await api.request('/auth/logout', method: 'POST');
     } catch (_) {}

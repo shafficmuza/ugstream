@@ -16,6 +16,9 @@ dependencies:
   video_player: ^2.8.0           # native HLS/MP4 playback (ExoPlayer/AVPlayer)
   url_launcher: ^6.2.0           # open hosted payment pages (card/DPO)
   flutter_chrome_cast: ^1.4.6    # Google Cast (Chromecast) on Android + iOS
+  firebase_core: ^3.6.0          # required by firebase_messaging
+  firebase_messaging: ^15.1.3    # push notifications (FCM -> APNs on iOS)
+  flutter_local_notifications: ^17.2.3 # draws notifications while app is foregrounded
 
 dev_dependencies:
   flutter_test:
