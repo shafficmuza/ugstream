@@ -22,6 +22,14 @@ async function bootstrap() {
   // wire bytes, not a re-serialized JSON.parse(...) round-trip.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
 
+  // nginx terminates TLS and proxies to us on 127.0.0.1, so without this every
+  // request looks like it came from localhost: rate limiting then keys every
+  // user in the world into one shared bucket (which is exactly how admins
+  // started seeing "Too Many Requests" during ordinary use), and logged client
+  // IPs are useless. `1` trusts exactly one hop — our own nginx — rather than
+  // `true`, which would let a client forge X-Forwarded-For and dodge limits.
+  app.set('trust proxy', 1);
+
   // multer's diskStorage doesn't create its destination directory itself.
   fs.mkdirSync(path.join(process.cwd(), 'uploads', 'logos'), { recursive: true });
   fs.mkdirSync(path.join(process.cwd(), 'uploads', 'images'), { recursive: true });

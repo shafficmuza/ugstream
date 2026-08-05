@@ -72,6 +72,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen())),
           ),
+          // Push state, surfaced because a store build cannot be attached to a
+          // debugger: without this, a handset that fails to register is
+          // invisible from both ends.
+          ListTile(
+            leading: Icon(
+              context.read<Auth>().push.hasToken
+                  ? Icons.notifications_active
+                  : Icons.notifications_off,
+              color: context.read<Auth>().push.hasToken ? Colors.greenAccent : Colors.orangeAccent,
+            ),
+            title: const Text('Notifications'),
+            subtitle: Text(
+              context.read<Auth>().push.status,
+              style: const TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Retry registration',
+              onPressed: () async {
+                await context.read<Auth>().push.onSignedIn();
+                if (context.mounted) setState(() {});
+              },
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),
             title: const Text('Log out', style: TextStyle(color: Colors.redAccent)),

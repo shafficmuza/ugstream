@@ -24,7 +24,11 @@ import { HealthController } from './common/health.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }] }),
+    // Per-IP, now that `trust proxy` makes req.ip the real client. An admin
+    // opening a few dashboard pages easily issues dozens of calls in a burst,
+    // so 100/min was tight even for one honest user; sensitive endpoints keep
+    // their own much stricter @Throttle (OTP is 3/min).
+    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] }),
     PrismaModule,
     JwtGlobalModule,
     SecretsModule,

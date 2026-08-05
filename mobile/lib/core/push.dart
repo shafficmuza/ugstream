@@ -39,6 +39,13 @@ class Push {
   bool _ready = false;
   String? _token;
 
+  /// Human-readable state, shown in Profile. A TestFlight/Play build cannot be
+  /// attached to a debugger, so without this a device that silently fails to
+  /// register is undiagnosable from the outside — the server just sees nothing.
+  String status = 'Not started';
+
+  bool get hasToken => _token != null;
+
   /// Set by the app so a tapped notification can navigate. Receives the
   /// `path` the backend put in the data payload, e.g. "/title/some-slug".
   void Function(String path)? onOpenPath;
@@ -52,6 +59,7 @@ class Push {
     try {
       await Firebase.initializeApp();
     } catch (e) {
+      status = 'Firebase not configured in this build';
       debugPrint('Push: Firebase not configured, notifications disabled ($e)');
       return;
     }
@@ -61,7 +69,10 @@ class Push {
 
       // Android 13+ requires runtime permission; iOS always prompts. Declining
       // is fine — everything below simply produces no visible notifications.
-      await FirebaseMessaging.instance.requestPermission();
+      final settings = await FirebaseMessaging.instance.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        status = 'Blocked — allow notifications in phone Settings';
+      }
 
       await _local.initialize(
         const InitializationSettings(
@@ -103,6 +114,7 @@ class Push {
         _register(t);
       });
     } catch (e) {
+      status = 'Setup failed: $e';
       debugPrint('Push: setup failed, notifications disabled ($e)');
     }
   }
@@ -140,12 +152,41 @@ class Push {
 
   Future<void> _syncToken() async {
     if (!_ready) return;
+
+    // On iOS, FCM cannot mint a token until APNs has handed one to the app,
+    // which happens asynchronously after registerForRemoteNotifications and
+    // is often not ready at launch. Waiting for it is what stops the device
+    // silently never registering — getToken would otherwise throw once and
+    // leave the handset unreachable for the whole session.
+    if (Platform.isIOS) {
+      var apns = false;
+      for (var attempt = 0; attempt < 10; attempt++) {
+        try {
+          if (await FirebaseMessaging.instance.getAPNSToken() != null) {
+            apns = true;
+            break;
+          }
+        } catch (_) {
+          // keep waiting; a throw here is just "not ready yet"
+        }
+        await Future.delayed(const Duration(seconds: 2));
+      }
+      if (!apns) {
+        status = 'No APNs token — check notification permission';
+        debugPrint('Push: APNs token never arrived');
+      }
+    }
+
     try {
-      // On iOS the APNs token must exist before FCM will issue one; right
-      // after launch it may not, and getToken then throws.
       _token = await FirebaseMessaging.instance.getToken();
-      if (_token != null) await _register(_token!);
+      if (_token != null) {
+        await _register(_token!);
+      } else {
+        status = 'Firebase returned no token';
+      }
     } catch (e) {
+      // Not fatal: onTokenRefresh still fires when FCM eventually issues one.
+      status = 'Token error: $e';
       debugPrint('Push: could not obtain token ($e)');
     }
   }
@@ -162,7 +203,9 @@ class Push {
           'platform': Platform.isIOS ? 'ios' : 'android',
         },
       );
+      status = 'Active — this device is registered';
     } catch (e) {
+      status = 'Registered with Firebase but server rejected it: $e';
       debugPrint('Push: token registration failed ($e)');
     }
   }
