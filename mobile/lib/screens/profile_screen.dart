@@ -75,26 +75,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Push state, surfaced because a store build cannot be attached to a
           // debugger: without this, a handset that fails to register is
           // invisible from both ends.
-          ListTile(
-            leading: Icon(
-              context.read<Auth>().push.hasToken
-                  ? Icons.notifications_active
-                  : Icons.notifications_off,
-              color: context.read<Auth>().push.hasToken ? Colors.greenAccent : Colors.orangeAccent,
-            ),
-            title: const Text('Notifications'),
-            subtitle: Text(
-              context.read<Auth>().push.status,
-              style: const TextStyle(fontSize: 12, color: Colors.white54),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Retry registration',
-              onPressed: () async {
-                await context.read<Auth>().push.onSignedIn();
-                if (context.mounted) setState(() {});
-              },
-            ),
+          ValueListenableBuilder<String>(
+            valueListenable: context.read<Auth>().push.statusNotifier,
+            builder: (context, status, _) {
+              final ok = context.read<Auth>().push.hasToken;
+              return ListTile(
+                leading: Icon(
+                  ok ? Icons.notifications_active : Icons.notifications_off,
+                  color: ok ? Colors.greenAccent : Colors.orangeAccent,
+                ),
+                title: const Text('Notifications'),
+                subtitle: Text(
+                  status,
+                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Retry registration',
+                  onPressed: () => context.read<Auth>().push.onSignedIn(),
+                ),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.redAccent),

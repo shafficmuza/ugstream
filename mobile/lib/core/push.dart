@@ -42,7 +42,15 @@ class Push {
   /// Human-readable state, shown in Profile. A TestFlight/Play build cannot be
   /// attached to a debugger, so without this a device that silently fails to
   /// register is undiagnosable from the outside — the server just sees nothing.
-  String status = 'Not started';
+  ///
+  /// Exposed as a ValueNotifier because setup is asynchronous and can take
+  /// tens of seconds: a plain field is read once when the screen builds, so
+  /// the row would sit on whatever value happened to be current then and look
+  /// stuck even while setup was progressing.
+  final ValueNotifier<String> statusNotifier = ValueNotifier<String>('Not started');
+
+  String get status => statusNotifier.value;
+  set status(String v) => statusNotifier.value = v;
 
   bool get hasToken => _token != null;
 
@@ -58,33 +66,50 @@ class Push {
     if (_ready) return;
     status = 'Starting…';
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp().timeout(const Duration(seconds: 20));
     } catch (e) {
-      status = 'Firebase not configured in this build';
+      status = 'Firebase init failed/timed out: $e';
       debugPrint('Push: Firebase not configured, notifications disabled ($e)');
       return;
     }
 
+    status = 'Firebase ready — asking permission…';
+
     try {
       FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
 
-      // Android 13+ requires runtime permission; iOS always prompts. Declining
-      // is fine — everything below simply produces no visible notifications.
-      final settings = await FirebaseMessaging.instance.requestPermission();
+      // Android 13+ requires runtime permission; iOS always prompts. Every
+      // await here is time-bounded: a step that never returns previously left
+      // setup wedged with no token and no explanation, which is exactly how
+      // this stalled at "Starting…" on iOS. A timeout degrades to "no
+      // notifications" and still reports where it stopped.
+      final settings = await FirebaseMessaging.instance
+          .requestPermission()
+          .timeout(const Duration(seconds: 30));
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
         status = 'Blocked — allow notifications in phone Settings';
       }
 
-      await _local.initialize(
-        const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-          iOS: DarwinInitializationSettings(),
-        ),
-        onDidReceiveNotificationResponse: (resp) {
-          final path = resp.payload;
-          if (path != null && path.isNotEmpty) _open(path);
-        },
-      );
+      status = 'Permission ${settings.authorizationStatus.name} — setting up…';
+
+      // Requesting permissions again here would raise a second iOS dialog and
+      // can hang; firebase_messaging has already asked above.
+      await _local
+          .initialize(
+            const InitializationSettings(
+              android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+              iOS: DarwinInitializationSettings(
+                requestAlertPermission: false,
+                requestBadgePermission: false,
+                requestSoundPermission: false,
+              ),
+            ),
+            onDidReceiveNotificationResponse: (resp) {
+              final path = resp.payload;
+              if (path != null && path.isNotEmpty) _open(path);
+            },
+          )
+          .timeout(const Duration(seconds: 20));
 
       // Android needs the channel to exist before a high-importance
       // notification will actually make a sound or appear as a heads-up.
@@ -96,14 +121,17 @@ class Push {
       // Android, so draw it locally. iOS is told to present it natively.
       FirebaseMessaging.onMessage.listen(_showForeground);
       await FirebaseMessaging.instance
-          .setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+          .setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true)
+          .timeout(const Duration(seconds: 15));
 
       // App resumed from background by tapping a notification.
       FirebaseMessaging.onMessageOpenedApp.listen((m) => _open(_pathOf(m)));
 
       // App launched cold from a notification: the navigator does not exist
       // yet, so stash it and let the UI pick it up.
-      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      final initial = await FirebaseMessaging.instance
+          .getInitialMessage()
+          .timeout(const Duration(seconds: 15), onTimeout: () => null);
       if (initial != null) pendingPath = _pathOf(initial);
 
       _ready = true;
@@ -115,8 +143,13 @@ class Push {
         _register(t);
       });
     } catch (e) {
-      status = 'Setup failed: $e';
-      debugPrint('Push: setup failed, notifications disabled ($e)');
+      // Setup stalled, but a token may still be obtainable — the pieces that
+      // matter for receiving a notification are independent of the ones that
+      // merely configure presentation, so try rather than give up here.
+      status = 'Setup issue ($e) — retrying token…';
+      debugPrint('Push: setup failed ($e)');
+      _ready = true;
+      await _syncToken();
     }
   }
 
