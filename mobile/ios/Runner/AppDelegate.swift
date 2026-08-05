@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
 import AVFoundation
-import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -13,14 +12,18 @@ import UserNotifications
     // to an external AirPlay device.
     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
 
-    // Push. On iOS FCM delivers via APNs, which requires the app to register
-    // for remote notifications and to hand the APNs token to the messaging
-    // plugin — FlutterAppDelegate forwards the token automatically once we
-    // set ourselves as the notification-centre delegate here.
-    if #available(iOS 10.0, *) {
-      UNUserNotificationCenter.current().delegate = self
-    }
-    application.registerForRemoteNotifications()
+    // Deliberately NOT calling registerForRemoteNotifications() here.
+    //
+    // firebase_messaging captures the APNs device token by swizzling the app
+    // delegate, and that swizzling is only installed once Firebase has been
+    // configured — which happens from Dart, well after this method returns.
+    // Registering this early means Apple's didRegisterForRemoteNotifications
+    // callback can arrive before anything is listening, so the token is
+    // dropped and getAPNSToken() then returns nil forever: the device never
+    // gets an FCM token and can never be reached.
+    //
+    // The plugin calls registerForRemoteNotifications itself once permission
+    // is granted, by which point it is ready to receive the token.
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
