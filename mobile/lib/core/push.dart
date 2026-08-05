@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -36,8 +37,14 @@ class Push {
   final ApiClient _api;
   final _local = FlutterLocalNotificationsPlugin();
 
+  /// Native side of APNs registration (see AppDelegate).
+  static const _native = MethodChannel('muza/push');
+
   bool _ready = false;
   String? _token;
+  /// Last permission outcome, kept so later failures can report it — a denied
+  /// prompt and a broken registration look identical without it.
+  String _perm = 'unknown';
 
   /// Human-readable state, shown in Profile. A TestFlight/Play build cannot be
   /// attached to a debugger, so without this a device that silently fails to
@@ -90,7 +97,20 @@ class Push {
         status = 'Blocked — allow notifications in phone Settings';
       }
 
-      status = 'Permission ${settings.authorizationStatus.name} — setting up…';
+      _perm = settings.authorizationStatus.name;
+      status = 'Permission $_perm — setting up…';
+
+      // Ask iOS for an APNs token now: Firebase is configured (so the token
+      // callback will be captured) and permission has been answered.
+      if (Platform.isIOS) {
+        try {
+          await _native
+              .invokeMethod<bool>('registerForRemoteNotifications')
+              .timeout(const Duration(seconds: 10));
+        } catch (e) {
+          debugPrint('Push: native APNs registration call failed ($e)');
+        }
+      }
 
       // Requesting permissions again here would raise a second iOS dialog and
       // can hang; firebase_messaging has already asked above.
@@ -207,8 +227,15 @@ class Push {
         await Future.delayed(const Duration(seconds: 2));
       }
       if (!apns) {
-        status = 'No APNs token — check notification permission';
+        var registered = false;
+        try {
+          registered = await _native.invokeMethod<bool>('isRegistered') ?? false;
+        } catch (_) {}
+        status = 'No APNs token (permission: $_perm, registered: $registered)';
         debugPrint('Push: APNs token never arrived');
+        // Nothing below can succeed without it, and getToken() would only
+        // throw and bury this far more informative message.
+        return;
       }
     }
 
@@ -221,7 +248,7 @@ class Push {
       }
     } catch (e) {
       // Not fatal: onTokenRefresh still fires when FCM eventually issues one.
-      status = 'Token error: $e';
+      status = 'Token error (permission: $_perm): $e';
       debugPrint('Push: could not obtain token ($e)');
     }
   }
