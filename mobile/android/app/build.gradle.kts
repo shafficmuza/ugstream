@@ -1,5 +1,9 @@
 plugins {
     id("com.android.application")
+    // Applied explicitly rather than relying on the Flutter Gradle Plugin to
+    // pull it in: under Gradle 9 / AGP 9 it is not implicitly present, so the
+    // `kotlin { compilerOptions { … } }` block below fails to resolve.
+    id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
