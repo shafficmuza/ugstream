@@ -224,6 +224,25 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Status by provider reference, WITHOUT auth. Needed because the browser
+   * that a hosted checkout redirects back to has no session — especially
+   * when the payment started in the mobile app. The reference is an opaque
+   * random string and only the status is returned, so nothing sensitive is
+   * exposed. Runs the same self-healing provider checks as getStatus.
+   */
+  async statusByRef(txRef: string): Promise<{ status: string }> {
+    const payment = await this.prisma.payment.findUnique({ where: { providerRef: txRef } });
+    if (!payment) throw new NotFoundException('Payment not found.');
+    if (payment.status === 'pending') {
+      // Reuse the authenticated path's verification logic.
+      await this.getStatus(payment.userId, payment.id).catch(() => undefined);
+      const fresh = await this.prisma.payment.findUnique({ where: { id: payment.id } });
+      return { status: fresh?.status ?? payment.status };
+    }
+    return { status: payment.status };
+  }
+
   async getStatus(userId: bigint, paymentId: bigint) {
     let payment = await this.prisma.payment.findFirst({ where: { id: paymentId, userId } });
     if (!payment) throw new NotFoundException('Payment not found.');
