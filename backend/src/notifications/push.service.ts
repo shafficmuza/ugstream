@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretsService } from '../common/secrets.service';
@@ -45,7 +46,29 @@ export class PushService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly secrets: SecretsService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * FCM rejects the entire message — not just the image — unless imageUrl is
+   * an absolute http(s) URL. Artwork is stored as a site-relative path like
+   * "/api/uploads/images/x.jpg", so sending it raw made every title that had
+   * a poster fail with invalid-payload while artwork-less ones succeeded.
+   *
+   * Anything that cannot be made absolute is dropped rather than sent: a
+   * notification without a picture is infinitely better than no notification.
+   */
+  private absoluteImage(url?: string | null): string | undefined {
+    if (!url) return undefined;
+    const base = this.config.get<string>('PUBLIC_BASE_URL') ?? 'https://ham.sentepos.com';
+    const candidate = url.startsWith('/') ? `${base.replace(/\/$/, '')}${url}` : url;
+    try {
+      const parsed = new URL(candidate);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? candidate : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   async isConfigured(): Promise<boolean> {
     return Boolean(await this.secrets.get(FIREBASE_SERVICE_ACCOUNT));
@@ -141,6 +164,8 @@ export class PushService {
       ? `${payload.body.slice(0, MAX_BODY - 1).trimEnd()}…`
       : payload.body;
 
+    const imageUrl = this.absoluteImage(payload.imageUrl);
+
     const dead: string[] = [];
 
     for (let i = 0; i < tokens.length; i += FCM_BATCH) {
@@ -148,19 +173,17 @@ export class PushService {
       try {
         const res = await app.messaging().sendEachForMulticast({
           tokens: batch,
-          notification: { title: payload.title, body, imageUrl: payload.imageUrl },
+          notification: { title: payload.title, body, imageUrl },
           // Data must be all-strings for FCM. The app reads `path` to decide
           // where to navigate when the notification is tapped.
           data: { path: payload.path ?? '/' },
           android: {
             priority: 'high',
-            notification: { channelId: 'new_titles', imageUrl: payload.imageUrl },
+            notification: { channelId: 'new_titles', imageUrl },
           },
           apns: {
             payload: { aps: { sound: 'default', contentAvailable: true } },
-            ...(payload.imageUrl
-              ? { fcmOptions: { imageUrl: payload.imageUrl } }
-              : {}),
+            ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
           },
         });
 
@@ -171,6 +194,7 @@ export class PushService {
           }
           result.failed += 1;
           const code = r.error?.code ?? '';
+          this.logger.warn(`FCM rejected a token: ${code} ${r.error?.message ?? ''}`);
           // These mean the install is gone or the token is malformed; keeping
           // them would make every future send look progressively worse and
           // waste quota, so drop them.

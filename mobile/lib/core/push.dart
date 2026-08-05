@@ -56,6 +56,7 @@ class Push {
 
   Future<void> init() async {
     if (_ready) return;
+    status = 'Starting…';
     try {
       await Firebase.initializeApp();
     } catch (e) {
@@ -159,6 +160,7 @@ class Push {
     // silently never registering — getToken would otherwise throw once and
     // leave the handset unreachable for the whole session.
     if (Platform.isIOS) {
+      status = 'Waiting for Apple push token…';
       var apns = false;
       for (var attempt = 0; attempt < 10; attempt++) {
         try {
