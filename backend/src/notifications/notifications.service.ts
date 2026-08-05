@@ -79,13 +79,16 @@ export class NotificationsService {
       imageUrl: title.bannerUrl ?? title.posterUrl ?? undefined,
     });
 
-    // Stamp before/regardless of delivery counts: the announcement was made,
-    // and a zero-device send should not leave the title primed to re-announce
-    // on the next publish toggle.
-    await this.prisma.title.update({
-      where: { id: titleId },
-      data: { notifiedAt: new Date() },
-    });
+    // Only count it as announced if it actually reached someone. A send to
+    // zero devices announced nothing, so burning the title's one-shot flag
+    // there would silently suppress it forever — which is exactly what
+    // happened to titles published before any handset had registered.
+    if (result.sent > 0) {
+      await this.prisma.title.update({
+        where: { id: titleId },
+        data: { notifiedAt: new Date() },
+      });
+    }
 
     await this.prisma.notification.create({
       data: {

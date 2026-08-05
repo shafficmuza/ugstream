@@ -13,6 +13,13 @@ interface Stats {
   configured: boolean;
 }
 
+interface TitleRow {
+  id: string;
+  name: string;
+  published: boolean;
+  notifiedAt: string | null;
+}
+
 interface Sent {
   id: string;
   title: string;
@@ -27,6 +34,8 @@ interface Sent {
 export default function AdminNotificationsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<Sent[]>([]);
+  const [titles, setTitles] = useState<TitleRow[]>([]);
+  const [announceId, setAnnounceId] = useState('');
   const [serviceAccount, setServiceAccount] = useState('');
   const [bTitle, setBTitle] = useState('');
   const [bBody, setBBody] = useState('');
@@ -36,12 +45,14 @@ export default function AdminNotificationsPage() {
   const load = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [s, h] = await Promise.all([
+    const [s, h, t] = await Promise.all([
       apiFetch<Stats>('/admin/notifications/stats', { token }),
       apiFetch<Sent[]>('/admin/notifications', { token }),
+      apiFetch<TitleRow[]>('/admin/titles', { token }),
     ]);
     setStats(s);
     setHistory(h);
+    setTitles(t);
   }, []);
 
   useEffect(() => {
@@ -59,6 +70,30 @@ export default function AdminNotificationsPage() {
       });
       setServiceAccount('');
       setMsg({ kind: 'ok', text: 'Firebase credentials saved. Push is now active.' });
+      await load();
+    } catch (e) {
+      setMsg({ kind: 'err', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function announce() {
+    const t = titles.find((x) => x.id === announceId);
+    if (!t) return;
+    if (t.notifiedAt && !confirm(`"${t.name}" has already been announced. Send it again to every device?`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await apiFetch<{ sent?: number; failed?: number; skipped?: string }>(
+        `/admin/notifications/title/${announceId}/resend`,
+        { token: getAccessToken()!, method: 'POST' },
+      );
+      setMsg(
+        res.skipped
+          ? { kind: 'err', text: `Not sent: ${res.skipped}` }
+          : { kind: 'ok', text: `Sent to ${res.sent} devices (${res.failed} failed).` },
+      );
       await load();
     } catch (e) {
       setMsg({ kind: 'err', text: (e as Error).message });
@@ -163,6 +198,32 @@ export default function AdminNotificationsPage() {
           style={btn}
         >
           Send to everyone
+        </button>
+      </section>
+
+      <section style={{ marginBottom: 32, maxWidth: 640 }}>
+        <h2 style={{ fontSize: 16, marginBottom: 12 }}>Announce an existing title</h2>
+        <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 12 }}>
+          A title alerts viewers automatically the first time it is published. Use this to
+          announce something published earlier, or to deliberately announce it again.
+        </p>
+        <select
+          value={announceId}
+          onChange={(e) => setAnnounceId(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">Select a title…</option>
+          {titles
+            .filter((t) => t.published)
+            .map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.notifiedAt ? ' (already announced)' : ''}
+              </option>
+            ))}
+        </select>
+        <button onClick={announce} disabled={busy || !announceId || !stats?.configured} style={btn}>
+          Announce now
         </button>
       </section>
 
