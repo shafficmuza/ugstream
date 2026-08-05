@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { TitleForm, emptyTitleForm, toUpsertPayload, TitleFormValues } from '../../title-form';
+import { ArtworkPanel } from './artwork-panel';
 import { tableStyle, thStyle, tdStyle, inputStyle, labelStyle, uploadToR2, uploadLadderToR2 } from '../../../shared';
 
 interface Episode {
@@ -82,6 +83,14 @@ export default function EditTitlePage() {
         {saving ? 'Saving…' : 'Save changes'}
       </button>
       {message && <p style={{ marginTop: 12, opacity: 0.8 }}>{message}</p>}
+
+      <ArtworkPanel
+        titleId={params.id}
+        titleName={form.name}
+        kind={form.kind}
+        year={form.releaseYear}
+        onApplied={load}
+      />
 
       <hr style={{ margin: '32px 0', borderColor: '#222' }} />
 

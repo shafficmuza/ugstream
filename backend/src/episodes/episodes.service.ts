@@ -118,8 +118,7 @@ export class EpisodesService {
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        ...(await this.nextSlot(titleId, dto.season, dto.number)),
         name: dto.name,
         videoProvider: 'r2_hls',
         cfStatus: 'uploading',
@@ -189,8 +188,7 @@ export class EpisodesService {
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        ...(await this.nextSlot(titleId, dto.season, dto.number)),
         name: dto.name,
         videoProvider: 'r2_file',
         r2Prefix: key,
@@ -211,8 +209,7 @@ export class EpisodesService {
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        ...(await this.nextSlot(titleId, dto.season, dto.number)),
         name: dto.name,
         videoProvider: 'r2_hls',
         cfStatus: 'uploading',
@@ -289,8 +286,7 @@ export class EpisodesService {
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        ...(await this.nextSlot(titleId, dto.season, dto.number)),
         name: dto.name,
         videoProvider: 'r2_hls',
         r2Prefix: prefix,
@@ -368,12 +364,13 @@ export class EpisodesService {
   }
 
   async createForTitle(titleId: bigint, dto: { season?: number; number?: number; name?: string }) {
+    const slot = await this.nextSlot(titleId, dto.season, dto.number);
     const { uploadUrl, videoUid } = await this.stream.createDirectUpload();
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        season: slot.season,
+        number: slot.number,
         name: dto.name,
         cfVideoUid: videoUid,
         cfStatus: 'uploading',
@@ -430,17 +427,52 @@ export class EpisodesService {
   }
 
   /**
+   * Next free (season, number) for a title. Every create path defaulted to
+   * S1E1, so importing a second video into a title blew up on the
+   * (title_id, season, number) unique constraint with an opaque 500.
+   */
+  private async nextSlot(
+    titleId: bigint,
+    season?: number,
+    number?: number,
+  ): Promise<{ season: number; number: number }> {
+    const s = season ?? 1;
+    if (number != null) {
+      const clash = await this.prisma.episode.findFirst({
+        where: { titleId, season: s, number },
+        select: { id: true },
+      });
+      if (clash) {
+        throw new HttpException(
+          `Season ${s} episode ${number} already exists for this title. Use a different number, or delete the existing video first.`,
+          HttpStatus.CONFLICT,
+        );
+      }
+      return { season: s, number };
+    }
+    const last = await this.prisma.episode.findFirst({
+      where: { titleId, season: s },
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+    return { season: s, number: (last?.number ?? 0) + 1 };
+  }
+
+  /**
    * Import a video into an episode straight from a URL via Cloudflare's
    * server-side ingest — the reliable path for large files (no ~200MB
    * browser-upload ceiling). Deletes any superseded placeholder first.
    */
   async importFromUrl(titleId: bigint, url: string, name: string, dto: { season?: number; number?: number }) {
+    // Resolve the slot BEFORE telling Cloudflare to ingest, so a duplicate
+    // doesn't leave an orphaned video sitting in Stream.
+    const slot = await this.nextSlot(titleId, dto.season, dto.number);
     const { videoUid } = await this.stream.copyFromUrl(url, name);
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
-        season: dto.season ?? 1,
-        number: dto.number ?? 1,
+        season: slot.season,
+        number: slot.number,
         cfVideoUid: videoUid,
         cfStatus: 'uploading',
       },

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -66,6 +66,13 @@ export class AdminTitlesController {
   @Post()
   async create(@CurrentUser() auth: AuthContext, @Body() dto: UpsertTitleDto) {
     const { genreIds, ...data } = dto;
+    // Slug is unique; surface a readable message instead of a raw 500.
+    const clash = await this.prisma.title.findUnique({ where: { slug: data.slug } });
+    if (clash) {
+      throw new ConflictException(
+        `A title with the web address "${data.slug}" already exists. Use a slightly different name.`,
+      );
+    }
     const title = await this.prisma.title.create({
       data: {
         ...data,
