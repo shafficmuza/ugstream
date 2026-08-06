@@ -71,13 +71,20 @@ jobs:
         working-directory: mobile
         run: flutter test
 
-      # Play requires an App Bundle, not an APK. versionCode must increase on
-      # every upload or Play rejects it, so use the monotonic run number.
+      # Play requires an App Bundle, not an APK, and rejects any upload whose
+      # versionCode is not strictly greater than every previous one.
+      #
+      # The run number alone is not safe here: this workflow's numbering starts
+      # at 1, and the app's first release has to be uploaded to Play by hand
+      # (the Play API refuses to publish to an app with no existing release),
+      # which already consumed low version codes. The offset keeps CI clear of
+      # them permanently, and stays monotonic because run numbers only ever
+      # increase.
       - name: Build signed AAB
         working-directory: mobile
         run: >
           flutter build appbundle --release
-          --build-number=${{ github.run_number }}
+          --build-number=$(( 100 + ${{ github.run_number }} ))
           --dart-define=API_BASE=https://ham.sentepos.com/api/v1
 
       # Fails the job if the bundle came out debug-signed, which would happen
