@@ -41,12 +41,32 @@ export function toE164(input: string): string {
     !raw.startsWith('+') && !digits.startsWith('0') && digits.length > 10 ? `+${digits}` : raw;
 
   const parsed = parsePhoneNumberFromString(candidate, DEFAULT_REGION);
-  if (!parsed || !parsed.isValid()) {
-    throw new BadRequestException(
-      'Enter a valid phone number, e.g. 0772123456 or +1 415 555 0123.',
-    );
+  if (parsed?.isValid()) return parsed.number;
+
+  // Someone who picked their country from a list and then typed their number
+  // the way they always write it produces `+2560772123456` — the trunk prefix
+  // duplicating the country code. Every user does this, and it is a formatting
+  // habit rather than a mistake, so correct it instead of refusing.
+  const trunkStripped = stripTrunkPrefix(candidate);
+  if (trunkStripped) {
+    const retry = parsePhoneNumberFromString(trunkStripped, DEFAULT_REGION);
+    if (retry?.isValid()) return retry.number;
   }
-  return parsed.number;
+
+  throw new BadRequestException(
+    'Enter a valid phone number, e.g. 0772123456 or +1 415 555 0123.',
+  );
+}
+
+/**
+ * Remove a national trunk prefix ('0') sitting directly after the country
+ * calling code, returning null when there is nothing to strip. Only applied
+ * after a normal parse has already failed, so a country whose numbers
+ * legitimately carry a leading zero is never mangled.
+ */
+function stripTrunkPrefix(candidate: string): string | null {
+  const m = /^\+(\d{1,3})0(\d+)$/.exec(candidate.replace(/[^\d+]/g, ''));
+  return m ? `+${m[1]}${m[2]}` : null;
 }
 
 /** Country calling code of an E.164 number, without the '+' (e.g. '256'). */

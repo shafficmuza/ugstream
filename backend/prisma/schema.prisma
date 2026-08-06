@@ -230,11 +230,28 @@ model StreamLease {
   @@map("stream_leases")
 }
 
+// A session lasts until the user logs out or it is evicted by the device cap.
+// Nothing expires it on a timer: being asked to sign in again halfway through
+// a film is the single most user-hostile thing an app of this kind can do.
 model Session {
   id           String    @id @default(uuid())
   userId       BigInt    @map("user_id")
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Public half of the refresh token (`lookup.verifier`), stored in the clear
+  // so refresh is a single indexed read. Without it, verifying a token means
+  // bcrypt-comparing against every live session in the system — which grows
+  // linearly with users, and a refresh that takes seconds is itself a source
+  // of the races this table now guards against. Nullable only for sessions
+  // issued before this existed; those still verify by scan.
+  refreshLookup String?  @unique @map("refresh_lookup")
   refreshHash  String    @map("refresh_hash")
+  // The previous refresh token stays valid for a grace period after rotation.
+  // A phone suspended by iOS between "server rotated" and "client persisted"
+  // otherwise holds a token the server has already discarded, and the session
+  // is dead through no fault of the user. Rotation is retained for its actual
+  // purpose — a token replayed after the grace window is treated as theft.
+  prevRefreshHash String? @map("prev_refresh_hash")
+  prevRefreshAt   DateTime? @map("prev_refresh_at")
   deviceLabel  String?   @map("device_label") @db.VarChar(100)
   createdAt    DateTime  @default(now()) @map("created_at")
   lastSeenAt   DateTime  @default(now()) @map("last_seen_at")

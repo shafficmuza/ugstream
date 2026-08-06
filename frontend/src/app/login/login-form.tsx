@@ -4,18 +4,30 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import PhoneInput, { composePhone } from '@/components/phone-input';
+import type { CountryCode } from 'libphonenumber-js';
 
 export function LoginForm() {
   const router = useRouter();
   const { login } = useAuth();
-  const [phone, setPhone] = useState('+256');
+  const [country, setCountry] = useState<CountryCode>('UG');
+  const [national, setNational] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // E.164 assembled from the country and the national part, or null while the
+  // number is incomplete. Kept in one place so what is displayed on the code
+  // screen is exactly what was sent.
+  const phone = composePhone(country, national);
+
   async function requestOtp(e?: React.FormEvent) {
     e?.preventDefault();
+    if (!phone) {
+      setError('Enter your phone number.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -52,18 +64,20 @@ export function LoginForm() {
 
       {step === 'phone' && (
         <form onSubmit={requestOtp}>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="0772123456 or +1 415 555 0123"
-            type="tel"
+          <PhoneInput
+            country={country}
+            onCountryChange={setCountry}
+            national={national}
+            onNationalChange={setNational}
             autoFocus
-            style={inputStyle}
+            inputStyle={inputStyle}
           />
-          <p style={{ opacity: 0.55, fontSize: 12, marginTop: -4, marginBottom: 12 }}>
-            Ugandan numbers work with or without the country code. Outside Uganda, include it.
-          </p>
-          <button className="btn" style={{ width: '100%' }} type="submit" disabled={loading}>
+          <button
+            className="btn"
+            style={{ width: '100%' }}
+            type="submit"
+            disabled={loading || !phone}
+          >
             {loading ? 'Sending…' : 'Send code'}
           </button>
         </form>

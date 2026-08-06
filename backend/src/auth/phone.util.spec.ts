@@ -47,6 +47,21 @@ describe('toE164', () => {
     // not carried into the subscriber number.
     expect(toE164('0772878614')).toBe('+256772878614');
   });
+
+  it('corrects a trunk zero left in after a country code', () => {
+    // What a country picker produces when someone types their number the way
+    // they always write it. Universal habit, not an error worth refusing.
+    expect(toE164('+2560772878614')).toBe('+256772878614');
+    expect(toE164('+4407911123456')).toBe('+447911123456');
+  });
+
+  it('ignores punctuation people naturally type', () => {
+    // A space in a phone number is not a validation failure. One reached the
+    // production users table as its own account before this existed.
+    expect(toE164('+256775 200442')).toBe('+256775200442');
+    expect(toE164('+256-775-200-442')).toBe('+256775200442');
+    expect(toE164(' 0775 200 442 ')).toBe('+256775200442');
+  });
 });
 
 describe('callingCode', () => {

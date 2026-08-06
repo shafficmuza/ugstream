@@ -49,8 +49,12 @@ export function refreshAccessToken(): Promise<string | null> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       });
+      // Only the server actively refusing the token ends a session. Clearing
+      // on any non-OK response meant a 502 from the proxy, or a backend
+      // restart, silently logged people out — and looked to them like the app
+      // timing out while they watched something.
       if (!res.ok) {
-        clearTokens();
+        if (res.status === 401 || res.status === 403) clearTokens();
         return null;
       }
       const json = await res.json();

@@ -2,6 +2,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -22,19 +23,46 @@ const DEFAULT_OTP_PER_DAY = 10;
 /** Used only if the settings row is somehow missing; the real value is admin-set. */
 const DEFAULT_MAX_SESSIONS = 3;
 const ACCESS_TOKEN_TTL = '15m';
-const REFRESH_TOKEN_TTL_DAYS = 30;
+/**
+ * How long a just-rotated refresh token keeps working. Covers the window in
+ * which a client can be interrupted between the server rotating and the client
+ * persisting — an app suspended or killed by iOS mid-request, a dropped
+ * response, a crash. Long enough to survive an app that is not reopened until
+ * the next day; short enough that a replayed token is not useful indefinitely.
+ */
+const REFRESH_GRACE_MS = 24 * 60 * 60 * 1000;
 
 function randomOtp(): string {
   // 6-digit numeric code, zero-padded.
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
-function randomToken(): string {
+/**
+ * Refresh tokens are `lookup.verifier`.
+ *
+ * The lookup half is stored in the clear and indexed, so a refresh is one
+ * keyed read; only the verifier is hashed, so possession of the database
+ * still does not yield a usable token. Both halves are full-entropy random,
+ * so the lookup leaks nothing beyond which session is being presented.
+ *
+ * The lookup is assigned once and then fixed for the life of the session:
+ * rotating it would leave the just-replaced token pointing at a row that no
+ * longer answers to it, so the grace window below could never be reached.
+ * It identifies the session, not the credential — only the verifier rotates,
+ * and only the verifier is secret.
+ */
+function newLookup(): string {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function newSecret(): string {
   return crypto.randomBytes(48).toString('hex');
 }
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -180,28 +208,94 @@ export class AuthService {
     return this.issueSession(user.id, deviceLabel);
   }
 
-  async refresh(refreshToken: string) {
-    const candidates = await this.prisma.session.findMany({
-      where: { revokedAt: null },
-      include: { user: true },
-    });
-
-    // Refresh tokens are stored hashed, so we must compare against each
-    // active session rather than looking one up directly. Fine at MVP
-    // scale; revisit (e.g. store a lookup prefix) if session volume grows.
-    for (const session of candidates) {
-      if (await bcrypt.compare(refreshToken, session.refreshHash)) {
-        if (session.user.status === 'banned') {
-          throw new UnauthorizedException('This account has been suspended.');
-        }
-        await this.prisma.session.update({
-          where: { id: session.id },
-          data: { lastSeenAt: new Date() },
-        });
-        return this.issueTokenPair(session.user.id, session.id);
-      }
+  /**
+   * Locate the session a refresh token belongs to.
+   *
+   * New tokens are `lookup.verifier`, so this is one indexed read. Tokens
+   * issued before that format existed have no lookup half and still need the
+   * old scan — dropping that path would have signed out every logged-in user
+   * on deploy, which is precisely the failure this change exists to stop.
+   */
+  private async findSessionForToken(refreshToken: string) {
+    const [lookup] = refreshToken.split('.');
+    if (refreshToken.includes('.')) {
+      const session = await this.prisma.session.findUnique({
+        where: { refreshLookup: lookup },
+        include: { user: true },
+      });
+      return session?.revokedAt === null ? session : null;
     }
 
+    const candidates = await this.prisma.session.findMany({
+      where: { revokedAt: null, refreshLookup: null },
+      include: { user: true },
+    });
+    for (const session of candidates) {
+      if (await bcrypt.compare(refreshToken, session.refreshHash)) return session;
+    }
+    return null;
+  }
+
+  async refresh(refreshToken: string) {
+    const session = await this.findSessionForToken(refreshToken);
+    if (!session) throw new UnauthorizedException('Invalid or expired refresh token.');
+    if (session.user.status === 'banned') {
+      throw new UnauthorizedException('This account has been suspended.');
+    }
+
+    // Legacy tokens are matched whole; new ones present only the verifier half
+    // for comparison, the lookup half having already served its purpose.
+    const secret = refreshToken.includes('.') ? refreshToken.split('.')[1] : refreshToken;
+
+    if (await bcrypt.compare(secret, session.refreshHash)) {
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { lastSeenAt: new Date() },
+      });
+      return this.issueTokenPair(session.user.id, session.id);
+    }
+
+    // Not the current token. If it is the one we just replaced, the client
+    // never received or never stored the replacement — reissue rather than
+    // ending a perfectly good session over a dropped response.
+    if (
+      session.prevRefreshHash &&
+      session.prevRefreshAt &&
+      Date.now() - session.prevRefreshAt.getTime() < REFRESH_GRACE_MS &&
+      (await bcrypt.compare(secret, session.prevRefreshHash))
+    ) {
+      // Adopt the token the client is actually holding as the current one and
+      // hand it straight back, rather than rotating again.
+      //
+      // Rotating here would mint a third token while the client still has the
+      // first, and the replacement it never received would be left valid for
+      // nobody — a client that did store it would then be refused and, worse,
+      // treated as a replay and have its session revoked. Rewinding to what
+      // the client demonstrably holds keeps exactly two tokens live at any
+      // moment: the current one and the one it replaced.
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: {
+          lastSeenAt: new Date(),
+          refreshHash: session.prevRefreshHash,
+          prevRefreshHash: null,
+          prevRefreshAt: null,
+        },
+      });
+      return this.issueTokenPair(session.user.id, session.id, refreshToken);
+    }
+
+    // A token that is neither current nor recently rotated is either long dead
+    // or stolen. Ending the session is the safe reading: a legitimate client
+    // cannot reach this state, and a replayed token should not outlive its
+    // discovery.
+    await this.prisma.session.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    this.logger.warn(
+      `Refresh token replayed outside the grace window for session ${session.id} — session revoked.`,
+    );
     throw new UnauthorizedException('Invalid or expired refresh token.');
   }
 
@@ -240,10 +334,12 @@ export class AuthService {
       });
     }
 
-    const refreshToken = randomToken();
-    const refreshHash = await bcrypt.hash(refreshToken, 10);
+    const lookup = newLookup();
+    const secret = newSecret();
+    const refreshToken = `${lookup}.${secret}`;
+    const refreshHash = await bcrypt.hash(secret, 10);
     const session = await this.prisma.session.create({
-      data: { userId, refreshHash, deviceLabel },
+      data: { userId, refreshHash, refreshLookup: lookup, deviceLabel },
     });
 
     const tokens = await this.issueTokenPair(userId, session.id, refreshToken);
@@ -259,19 +355,39 @@ export class AuthService {
 
     let refreshToken = existingRefreshToken;
     if (!refreshToken) {
-      // Rotate the refresh token on every use.
-      refreshToken = randomToken();
-      const refreshHash = await bcrypt.hash(refreshToken, 10);
+      // Rotate, retaining the outgoing token as `prev` so a client that never
+      // receives this response is not stranded.
+      const current = await this.prisma.session.findUniqueOrThrow({
+        where: { id: sessionId },
+        select: {
+          refreshHash: true,
+          refreshLookup: true,
+          prevRefreshHash: true,
+          prevRefreshAt: true,
+        },
+      });
+      // Stable for the session, except on the one refresh that upgrades a
+      // legacy token to the new format.
+      const lookup = current.refreshLookup ?? newLookup();
+      const secret = newSecret();
+      refreshToken = `${lookup}.${secret}`;
       await this.prisma.session.update({
         where: { id: sessionId },
-        data: { refreshHash },
+        data: {
+          refreshHash: await bcrypt.hash(secret, 10),
+          refreshLookup: lookup,
+          prevRefreshHash: current.refreshHash,
+          prevRefreshAt: new Date(),
+        },
       });
     }
 
     return {
       accessToken,
       refreshToken,
-      refreshTokenExpiresInDays: REFRESH_TOKEN_TTL_DAYS,
+      // Sessions do not expire on a timer; they end at logout or when the
+      // device cap evicts them. Reported so clients need not guess.
+      refreshTokenExpiresInDays: null,
     };
   }
 
