@@ -108,6 +108,19 @@ export function LoginForm() {
         </a>
       )}
 
+      {/* Builds up to 2026-08-06 were signed with a debug key; releases are
+          now signed with the real upload key. Android refuses to update an
+          app across a signature change, so anyone holding an older build hits
+          an install error that gives no hint as to why. This one-line note is
+          cheaper than the support messages it prevents. Safe to delete once
+          the app is distributed through Play. */}
+      {process.env.NEXT_PUBLIC_ANDROID_APK_URL && (
+        <p style={{ marginTop: 8, fontSize: 12, color: '#8a8a8a', textAlign: 'center' }}>
+          Updating from an older build? Uninstall the app first, then install
+          this one.
+        </p>
+      )}
+
       {process.env.NEXT_PUBLIC_IOS_APP_URL && (
         <a
           href={process.env.NEXT_PUBLIC_IOS_APP_URL}
