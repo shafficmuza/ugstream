@@ -76,3 +76,24 @@ jobs:
         run: |
           export MATCH_GIT_BASIC_AUTHORIZATION=$(printf 'x-access-token:%s' '${{ secrets.GITHUB_TOKEN }}' | base64)
           fastlane ios beta
+
+      # Proves what actually got signed into the uploaded build. Push failures
+      # on device are otherwise ambiguous between "entitlement missing" and
+      # "Apple declined", and this settles the first half without another
+      # 20-minute round trip through TestFlight. Never fails the build — it is
+      # evidence, not a gate.
+      - name: Show push entitlement in the signed IPA
+        if: always()
+        working-directory: mobile
+        run: |
+          IPA=$(find build/ipa -name '*.ipa' | head -1)
+          if [ -z "$IPA" ]; then echo "no IPA found; skipping"; exit 0; fi
+          rm -rf /tmp/ipacheck && mkdir -p /tmp/ipacheck
+          unzip -q "$IPA" -d /tmp/ipacheck
+          APP=$(find /tmp/ipacheck/Payload -maxdepth 1 -name '*.app' | head -1)
+          echo "--- entitlements ---"
+          codesign -d --entitlements :- "$APP" 2>/dev/null || echo "(could not read entitlements)"
+          echo "--- provisioning profile ---"
+          security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null \
+            | plutil -extract Entitlements xml1 -o - - 2>/dev/null \
+            || echo "(could not read profile)"

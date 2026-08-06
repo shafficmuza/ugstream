@@ -46,6 +46,10 @@ class Push {
   /// prompt and a broken registration look identical without it.
   String _perm = 'unknown';
 
+  /// Set when the native registration call itself failed (e.g. the method
+  /// channel is not wired up), as opposed to Apple declining to issue a token.
+  String? _nativeError;
+
   /// Human-readable state, shown in Profile. A TestFlight/Play build cannot be
   /// attached to a debugger, so without this a device that silently fails to
   /// register is undiagnosable from the outside — the server just sees nothing.
@@ -108,6 +112,11 @@ class Push {
               .invokeMethod<bool>('registerForRemoteNotifications')
               .timeout(const Duration(seconds: 10));
         } catch (e) {
+          // Recorded rather than only logged: if the channel is missing, every
+          // later symptom is "no token", and without this the real cause —
+          // that registration was never even requested — stays invisible on a
+          // TestFlight build.
+          _nativeError = '$e';
           debugPrint('Push: native APNs registration call failed ($e)');
         }
       }
@@ -227,12 +236,31 @@ class Push {
         await Future.delayed(const Duration(seconds: 2));
       }
       if (!apns) {
-        var registered = false;
+        // Apple reports a refusal only via didFailToRegisterForRemoteNotifications,
+        // which the app delegate now records; without it "declined" and "still
+        // waiting" are the same observation and the cause is unknowable.
+        Map<Object?, Object?>? diag;
         try {
-          registered = await _native.invokeMethod<bool>('isRegistered') ?? false;
-        } catch (_) {}
-        status = 'No APNs token (permission: $_perm, registered: $registered)';
-        debugPrint('Push: APNs token never arrived');
+          diag = await _native
+              .invokeMethod<Map<Object?, Object?>>('diagnostics')
+              .timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('Push: diagnostics unavailable ($e)');
+        }
+        final appleError = (diag?['error'] as String?) ?? '';
+        final registered = diag?['registered'] == true;
+
+        if (appleError.isNotEmpty) {
+          status = 'Apple refused push registration: $appleError';
+        } else if (_nativeError != null) {
+          status = 'Never asked Apple — channel error: $_nativeError';
+        } else if (!registered) {
+          status = 'Registration requested but iOS never confirmed it '
+              '(permission: $_perm) — check network/APNs reachability';
+        } else {
+          status = 'Registered with Apple but no token yet (permission: $_perm)';
+        }
+        debugPrint('Push: APNs token never arrived — $status');
         // Nothing below can succeed without it, and getToken() would only
         // throw and bury this far more informative message.
         return;

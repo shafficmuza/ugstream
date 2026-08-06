@@ -31,6 +31,38 @@ import AVFoundation
   /// Held so the channel is not deallocated along with its handler.
   private var pushChannel: FlutterMethodChannel?
 
+  /// What Apple last said about remote-notification registration.
+  ///
+  /// Registration is asynchronous, and a refusal is reported *only* through
+  /// didFailToRegisterForRemoteNotifications. With that callback unimplemented
+  /// a rejection was indistinguishable from "not ready yet", so a handset that
+  /// never gets a token gave no reason at all. Read back over the channel and
+  /// shown in the app, because a TestFlight build cannot be attached to a
+  /// debugger and this is the only way the failure becomes visible.
+  private var apnsError: String?
+  private var apnsTokenBytes = 0
+
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    apnsTokenBytes = deviceToken.count
+    apnsError = nil
+    NSLog("MuzaPush: APNs token received (\(deviceToken.count) bytes)")
+    // Chaining to super is what keeps firebase_messaging working: this
+    // override exists to observe the outcome, never to take it over.
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    apnsError = error.localizedDescription
+    NSLog("MuzaPush: APNs registration failed: \(error.localizedDescription)")
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     // Native AirPlay picker, embedded by the player via UiKitView.
@@ -51,7 +83,7 @@ import AVFoundation
         name: "muza/push",
         binaryMessenger: registrar.messenger()
       )
-      channel.setMethodCallHandler { call, result in
+      channel.setMethodCallHandler { [weak self] call, result in
         switch call.method {
         case "registerForRemoteNotifications":
           DispatchQueue.main.async {
@@ -60,6 +92,13 @@ import AVFoundation
           result(true)
         case "isRegistered":
           result(UIApplication.shared.isRegisteredForRemoteNotifications)
+        case "diagnostics":
+          // Everything needed to explain a missing token, in one call.
+          result([
+            "registered": UIApplication.shared.isRegisteredForRemoteNotifications,
+            "tokenBytes": self?.apnsTokenBytes ?? 0,
+            "error": self?.apnsError ?? "",
+          ])
         default:
           result(FlutterMethodNotImplemented)
         }
