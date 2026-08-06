@@ -10,12 +10,15 @@ name: Build Android APK
 #                                            named "DEPLOY_PASSWORD" (bound
 #                                            via the job's `environment:`)
 
+# Manual trigger only. Android releases are built on the server instead
+# (/usr/local/bin/muza-build-apk.sh), which is why Flutter and the Android SDK
+# are installed there: the APK is large, the build is slow, and running it on
+# every push burns Actions minutes that iOS genuinely needs — macOS runners are
+# billed at 10x and are the only way to produce an iOS build at all.
+#
+# Kept rather than deleted so a clean-room build is available on demand when
+# something looks wrong with the server toolchain.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/build-android.yml'
   workflow_dispatch:
 
 jobs:

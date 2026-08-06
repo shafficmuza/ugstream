@@ -9,15 +9,16 @@ name: Release iOS to TestFlight
 #   APPLE_TEAM_ID     Apple Developer Team ID
 #   MATCH_PASSWORD    any strong passphrase (encrypts the stored certs)
 
+# Manual trigger only, as the note below always anticipated.
+#
+# macOS runners bill at 10x, and this is now the only workflow that has to use
+# them — Android moved to the server toolchain. Building on every mobile commit
+# spent the allowance on commits that never needed a TestFlight build; a run
+# costs roughly 150 billed minutes. Dispatch it when there is something to
+# actually test on a handset.
+#
+# Android's counterpart is /usr/local/bin/muza-build-apk.sh on the server.
 on:
-  # Ship iOS on the same trigger as Android so the two platforms never drift
-  # apart. NOTE: macOS runners bill at 10x GitHub-minutes — switch back to
-  # dispatch-only if the allowance gets tight.
-  push:
-    branches: [main]
-    paths:
-      - 'mobile/**'
-      - '.github/workflows/release-ios-testflight.yml'
   workflow_dispatch:
 
 jobs:
