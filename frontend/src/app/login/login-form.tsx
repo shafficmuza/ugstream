@@ -80,6 +80,24 @@ export function LoginForm() {
           >
             {loading ? 'Sending…' : 'Send code'}
           </button>
+          {/*
+            Consent language at the point of opt-in. Required for US A2P 10DLC
+            registration: the screen where a number is entered has to state
+            what will be sent and link to both policies, and reviewers check
+            this screen specifically.
+          */}
+          <p style={{ opacity: 0.5, fontSize: 11.5, marginTop: 14, lineHeight: 1.5 }}>
+            By continuing you agree to receive a one-time sign-in code by SMS. Message and data
+            rates may apply. Reply STOP to opt out or HELP for help. See our{' '}
+            <a href="/terms" style={{ color: 'inherit', textDecoration: 'underline' }}>
+              Terms
+            </a>{' '}
+            and{' '}
+            <a href="/privacy" style={{ color: 'inherit', textDecoration: 'underline' }}>
+              Privacy Policy
+            </a>
+            .
+          </p>
         </form>
       )}
 
