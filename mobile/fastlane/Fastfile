@@ -74,3 +74,34 @@ platform :ios do
     )
   end
 end
+
+# Google Play release lane, the Android counterpart to `ios beta`.
+#
+# Auth is a Google Cloud service account JSON (PLAY_SERVICE_ACCOUNT_JSON),
+# granted "Release to testing tracks" in Play Console → Users and permissions.
+#
+# ONE-TIME MANUAL STEPS before this lane can run:
+#   1. Create the app in Play Console with package com.prosystemsug.muzawatch.
+#   2. Upload one AAB by hand. The Play Developer API refuses to publish to an
+#      app that has never had a release, so the first one cannot be automated.
+#   3. Enable Play App Signing. Our keystore is then the *upload* key; Google
+#      re-signs with the app signing key it holds.
+platform :android do
+  desc "Build a signed AAB and upload to the Play internal testing track"
+  lane :internal do
+    # Draft, not live: the build lands in Play Console for review, and a human
+    # promotes it to production. Same shape as a TestFlight build waiting for
+    # release — nothing reaches users without an explicit action.
+    upload_to_play_store(
+      track: "internal",
+      aab: "build/app/outputs/bundle/release/app-release.aab",
+      json_key: ENV.fetch("PLAY_JSON_KEY_PATH"),
+      package_name: "com.prosystemsug.muzawatch",
+      release_status: "draft",
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end

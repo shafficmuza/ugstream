@@ -51,6 +51,29 @@ jobs:
             sed -i 's/android:label="ham_watch"/android:label="Muza Watch"/g' android/app/src/main/AndroidManifest.xml || true
           fi
 
+      # Sign the sideload APK with the same upload key Play will use. Without
+      # this CI would fall back to debug keys (see build.gradle.kts) and the
+      # APK served from ham.sentepos.com would have a different signature from
+      # the Play build — Android refuses to update across a signature change.
+      - name: Restore upload keystore
+        working-directory: mobile/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_B64 not set — APK will be debug-signed."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
+          cat > key.properties <<PROPS
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          PROPS
+
       - name: Dependencies
         working-directory: mobile
         run: flutter pub get

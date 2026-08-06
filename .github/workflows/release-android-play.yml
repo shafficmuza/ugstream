@@ -1,0 +1,118 @@
+name: Release Android to Play Console
+
+# Signed AAB → Play Console internal testing track, as a DRAFT. The Android
+# counterpart to release-ios-testflight.yml: the build lands in the console
+# ready to review, and a human promotes it to production. Nothing reaches
+# users automatically.
+#
+# Manual trigger only. build-android.yml already produces the sideload APK
+# that ham.sentepos.com serves on every push, and there is no reason to send
+# a Play draft for every commit.
+#
+# Required secrets:
+#   ANDROID_KEYSTORE_B64        base64 of mobile/android/upload-keystore.jks
+#   ANDROID_KEYSTORE_PASSWORD   store password (same value as key password)
+#   ANDROID_KEY_ALIAS           muzawatch-upload
+#   PLAY_SERVICE_ACCOUNT_JSON   Google Cloud service account key, full JSON
+#
+# See the Fastfile's android platform block for the one-time Play Console
+# steps that must happen before this can succeed.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # The keystore is deliberately not in git. Reconstitute it from secrets
+      # for this job only; the runner is destroyed afterwards.
+      - name: Restore upload keystore
+        working-directory: mobile/android
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 is not set — cannot sign a Play release."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > upload-keystore.jks
+          cat > key.properties <<PROPS
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          PROPS
+
+      - name: Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Tests
+        working-directory: mobile
+        run: flutter test
+
+      # Play requires an App Bundle, not an APK. versionCode must increase on
+      # every upload or Play rejects it, so use the monotonic run number.
+      - name: Build signed AAB
+        working-directory: mobile
+        run: >
+          flutter build appbundle --release
+          --build-number=${{ github.run_number }}
+          --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+
+      # Fails the job if the bundle came out debug-signed, which would happen
+      # silently if key.properties were missing — build.gradle.kts falls back
+      # to debug keys by design so local builds keep working.
+      - name: Verify release signing
+        working-directory: mobile
+        run: |
+          SIGNER=$(keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab 2>/dev/null | grep -m1 'Owner:' || true)
+          echo "Signed by: $SIGNER"
+          if echo "$SIGNER" | grep -q 'CN=Android Debug'; then
+            echo "::error::AAB is debug-signed; Play would reject it."
+            exit 1
+          fi
+
+      - name: Install fastlane
+        run: gem install fastlane --no-document
+
+      - name: Upload to Play internal track
+        working-directory: mobile
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not set."
+            exit 1
+          fi
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > /tmp/play-key.json
+          export PLAY_JSON_KEY_PATH=/tmp/play-key.json
+          fastlane android internal
+          rm -f /tmp/play-key.json
+
+      - name: Upload AAB artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: muza-watch-aab
+          path: mobile/build/app/outputs/bundle/release/app-release.aab

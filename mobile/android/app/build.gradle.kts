@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // Applied explicitly rather than relying on the Flutter Gradle Plugin to
@@ -7,6 +10,19 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release signing credentials. key.properties and the keystore itself are
+// gitignored and never committed — CI writes both from repository secrets
+// before building. When they are absent (a fresh clone, a contributor without
+// the key) the release build falls back to debug signing below rather than
+// failing, so `flutter build apk --release` still works for local testing.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+val hasReleaseKey = keystorePropertiesFile.exists() &&
+    rootProject.file(keystoreProperties.getProperty("storeFile") ?: "").exists()
 
 android {
     namespace = "com.prosystemsug.muzawatch"
@@ -33,11 +49,28 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug keys are only a fallback for local builds without the
+            // keystore. A debug-signed artifact cannot be uploaded to Play and
+            // fails Play Integrity, so any build meant for distribution must
+            // take the release branch here.
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

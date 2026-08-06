@@ -3,6 +3,25 @@ import 'package:dio/dio.dart';
 import 'config.dart';
 import 'token_store.dart';
 
+/// Why a refresh attempt ended.
+///
+/// The distinction matters more than it looks: only [rejected] means the
+/// session is genuinely over. Treating every failure as expiry is what made
+/// users re-authenticate after pausing a movie — the access token had lapsed,
+/// the refresh call hit a sleeping radio, and a perfectly valid 30-day
+/// refresh token was discarded.
+enum _RefreshOutcome {
+  /// New token pair issued and stored.
+  renewed,
+
+  /// The server refused the refresh token (401/403). Sign the user out.
+  rejected,
+
+  /// Could not get an answer — offline, timeout, 5xx, proxy error. Keep the
+  /// credentials and let the caller retry.
+  unreachable,
+}
+
 /// HTTP client with automatic JWT refresh.
 ///
 /// Access tokens live 15 minutes; on a 401 we transparently exchange the
@@ -23,7 +42,7 @@ class ApiClient {
 
   final TokenStore _tokens;
   late final Dio _dio;
-  Future<String?>? _refreshing;
+  Future<(String?, _RefreshOutcome)>? _refreshing;
 
   /// Called when refresh fails (session truly expired) so the app can log out.
   void Function()? onSessionExpired;
@@ -49,12 +68,19 @@ class ApiClient {
     var res = await send(token);
 
     if (res.statusCode == 401 && auth && (await _tokens.refreshToken) != null) {
-      final fresh = await _refresh();
+      final (fresh, outcome) = await _refresh();
       if (fresh != null) {
         res = await send(fresh);
-      } else {
+      } else if (outcome == _RefreshOutcome.rejected) {
+        // The server actively refused the refresh token: the session really is
+        // over, so drop the credentials and send the user to sign in.
+        await _tokens.clear();
         onSessionExpired?.call();
       }
+      // Unreachable: the tokens are almost certainly still valid, we just
+      // could not ask. Falling through raises the original 401 as a normal
+      // error the caller can retry — signing the user out here is what made a
+      // paused movie, a sleeping radio or a server blip look like a timeout.
     }
 
     if (res.statusCode != null && res.statusCode! >= 400) {
@@ -63,25 +89,56 @@ class ApiClient {
     return res;
   }
 
-  Future<String?> _refresh() {
+  Future<(String?, _RefreshOutcome)> _refresh() {
     // Single in-flight refresh — a burst of 401s triggers exactly one call.
     return _refreshing ??= () async {
       try {
         final refresh = await _tokens.refreshToken;
-        if (refresh == null) return null;
-        final res = await _dio.post('/auth/refresh', data: {'refreshToken': refresh});
-        if (res.statusCode == 200 && res.data is Map) {
-          final a = res.data['accessToken'] as String?;
-          final r = res.data['refreshToken'] as String?;
-          if (a != null && r != null) {
-            await _tokens.save(a, r);
-            return a;
+        if (refresh == null) return (null, _RefreshOutcome.rejected);
+
+        // One retry: a handset waking from sleep routinely fails its first
+        // request while the radio reassociates, and that must not be mistaken
+        // for an invalid token.
+        for (var attempt = 0; attempt < 2; attempt++) {
+          final Response res;
+          try {
+            res = await _dio.post('/auth/refresh', data: {'refreshToken': refresh});
+          } on DioException {
+            if (attempt == 0) {
+              await Future.delayed(const Duration(seconds: 2));
+              continue;
+            }
+            return (null, _RefreshOutcome.unreachable);
           }
+
+          if (res.statusCode == 200 && res.data is Map) {
+            final a = res.data['accessToken'] as String?;
+            final r = res.data['refreshToken'] as String?;
+            if (a != null && r != null) {
+              await _tokens.save(a, r);
+              return (a, _RefreshOutcome.renewed);
+            }
+            // 200 with an unusable body is a server fault, not a dead session.
+            return (null, _RefreshOutcome.unreachable);
+          }
+
+          // Only the server saying "this token is no good" ends the session.
+          // A 5xx or a proxy error is transient: clearing the tokens there
+          // permanently logged people out over a momentary backend blip.
+          if (res.statusCode == 401 || res.statusCode == 403) {
+            return (null, _RefreshOutcome.rejected);
+          }
+          if (attempt == 0) {
+            await Future.delayed(const Duration(seconds: 2));
+            continue;
+          }
+          return (null, _RefreshOutcome.unreachable);
         }
-        await _tokens.clear();
-        return null;
+        return (null, _RefreshOutcome.unreachable);
       } catch (_) {
-        return null;
+        // Unexpected fault — assume the session is fine rather than throwing
+        // the user out on something we did not anticipate.
+        return (null, _RefreshOutcome.unreachable);
       } finally {
         _refreshing = null;
       }
