@@ -12,6 +12,9 @@ export interface AppSettings {
   smsProvider?: string;
   maxSessions?: number;
   maxStreams?: number;
+  otpCooldownSeconds?: number;
+  otpPerHour?: number;
+  otpPerDay?: number;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -23,9 +26,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   heroBackgroundUrl: null,
   authBackgroundUrl: null,
   mobileMoneyProvider: 'momo',
-  smsProvider: 'africastalking',
+  smsProvider: 'auto',
   maxSessions: 3,
   maxStreams: 2,
+  otpCooldownSeconds: 60,
+  otpPerHour: 3,
+  otpPerDay: 10,
 };
 
 export async function fetchSettings(): Promise<AppSettings> {

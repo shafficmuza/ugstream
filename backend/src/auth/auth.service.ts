@@ -1,5 +1,6 @@
 import {
-  BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,10 +11,14 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from './sms.service';
 import { ActivityService } from '../common/activity.service';
+import { toE164 } from './phone.util';
 
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
-const OTP_REQUESTS_PER_HOUR = 3;
+/** Used only if the settings row is missing; the real values are admin-set. */
+const DEFAULT_OTP_COOLDOWN_SECONDS = 60;
+const DEFAULT_OTP_PER_HOUR = 3;
+const DEFAULT_OTP_PER_DAY = 10;
 /** Used only if the settings row is somehow missing; the real value is admin-set. */
 const DEFAULT_MAX_SESSIONS = 3;
 const ACCESS_TOKEN_TTL = '15m';
@@ -38,22 +43,76 @@ export class AuthService {
     private readonly activity: ActivityService,
   ) {}
 
-  async requestOtp(phone: string): Promise<{ expiresInSeconds: number }> {
-    // The hourly cap exists to stop SMS spam/cost. While no SMS gateway is
-    // configured we issue the static test code and send nothing, so the cap
-    // only gets in the way of testing — enforce it just for real sends.
-    const smsReady = await this.sms.isConfigured();
-    if (smsReady) {
-      const since = new Date(Date.now() - 60 * 60 * 1000);
-      const recentCount = await this.prisma.otpCode.count({
-        where: { phone, expiresAt: { gt: since } },
+  /**
+   * Per-number OTP limits.
+   *
+   * The endpoint's per-IP throttle does not protect the SMS bill: an attacker
+   * rotating addresses (SMS pumping — farming codes to numbers on ranges they
+   * take a revenue share of) bypasses it entirely, and at international rates
+   * that is real money leaving fast. These caps are keyed on the phone number
+   * itself, which is the thing being charged for.
+   *
+   * Enforced only when SMS can actually be sent: with no gateway configured
+   * nothing costs anything and the caps would only obstruct testing.
+   */
+  private async enforceOtpLimits(phone: string): Promise<void> {
+    const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
+    const cooldown = s?.otpCooldownSeconds ?? DEFAULT_OTP_COOLDOWN_SECONDS;
+    const perHour = s?.otpPerHour ?? DEFAULT_OTP_PER_HOUR;
+    const perDay = s?.otpPerDay ?? DEFAULT_OTP_PER_DAY;
+    const now = Date.now();
+
+    const tooMany = (message: string, retryAfterSeconds: number): never => {
+      throw new HttpException(
+        { statusCode: 429, error: 'OtpRateLimited', message, retryAfterSeconds },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    };
+
+    if (cooldown > 0) {
+      const last = await this.prisma.otpCode.findFirst({
+        where: { phone },
+        orderBy: { id: 'desc' },
+        select: { createdAt: true },
       });
-      if (recentCount >= OTP_REQUESTS_PER_HOUR) {
-        throw new BadRequestException(
-          'Too many codes requested for this number. Try again later.',
-        );
+      if (last) {
+        const elapsed = (now - last.createdAt.getTime()) / 1000;
+        if (elapsed < cooldown) {
+          const wait = Math.ceil(cooldown - elapsed);
+          tooMany(`Please wait ${wait} second${wait === 1 ? '' : 's'} before requesting another code.`, wait);
+        }
       }
     }
+
+    // Counted from createdAt, so the window means what it says regardless of
+    // how long a code stays valid.
+    if (perHour > 0) {
+      const count = await this.prisma.otpCode.count({
+        where: { phone, createdAt: { gt: new Date(now - 60 * 60 * 1000) } },
+      });
+      if (count >= perHour) {
+        tooMany('Too many codes requested for this number. Try again in an hour.', 3600);
+      }
+    }
+
+    if (perDay > 0) {
+      const count = await this.prisma.otpCode.count({
+        where: { phone, createdAt: { gt: new Date(now - 24 * 60 * 60 * 1000) } },
+      });
+      if (count >= perDay) {
+        tooMany('Daily limit reached for this number. Try again tomorrow or contact support.', 86400);
+      }
+    }
+  }
+
+  async requestOtp(rawPhone: string): Promise<{ expiresInSeconds: number }> {
+    // Normalise before anything else: the limits, the OTP lookup on verify and
+    // the user row all key on this string, so `0772…` and `+256772…` must not
+    // be able to diverge into separate identities or separate rate buckets.
+    const phone = toE164(rawPhone);
+
+    const smsReady = await this.sms.isConfigured();
+    if (smsReady) await this.enforceOtpLimits(phone);
 
     // OTP_STATIC_CODE is a dev/testing bypass (fixed code, no SMS) — a real
     // account-takeover risk if left on in production. It is honoured ONLY
@@ -79,7 +138,8 @@ export class AuthService {
     return { expiresInSeconds: OTP_TTL_MINUTES * 60 };
   }
 
-  async verifyOtp(phone: string, code: string, deviceLabel?: string) {
+  async verifyOtp(rawPhone: string, code: string, deviceLabel?: string) {
+    const phone = toE164(rawPhone);
     const otp = await this.prisma.otpCode.findFirst({
       where: { phone, consumedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { id: 'desc' },

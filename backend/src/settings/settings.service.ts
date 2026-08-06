@@ -15,6 +15,9 @@ export interface UpdateSettingsInput {
   pushAudience?: string;
   maxSessions?: number;
   maxStreams?: number;
+  otpCooldownSeconds?: number;
+  otpPerHour?: number;
+  otpPerDay?: number;
 }
 
 @Injectable()

@@ -4,7 +4,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
   mobileMoneyProvider?: string;
 
-  @IsOptional() @IsIn(['africastalking', 'twilio'])
+  @IsOptional() @IsIn(['auto', 'africastalking', 'twilio'])
   smsProvider?: string;
 
   @IsOptional() @IsString() @MaxLength(80)
@@ -42,4 +42,17 @@ export class UpdateSettingsDto {
 
   @IsOptional() @IsInt() @Min(0) @Max(20)
   maxStreams?: number;
+
+  // OTP caps, per phone number. Upper bounds are again sanity rails: the
+  // ceilings are high enough for any legitimate policy and low enough that a
+  // slipped digit can't turn into an open tap on the SMS bill. 0 disables the
+  // individual check.
+  @IsOptional() @IsInt() @Min(0) @Max(3600)
+  otpCooldownSeconds?: number;
+
+  @IsOptional() @IsInt() @Min(0) @Max(50)
+  otpPerHour?: number;
+
+  @IsOptional() @IsInt() @Min(0) @Max(200)
+  otpPerDay?: number;
 }

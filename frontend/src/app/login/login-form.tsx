@@ -55,11 +55,14 @@ export function LoginForm() {
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="+256700000000"
+            placeholder="0772123456 or +1 415 555 0123"
             type="tel"
             autoFocus
             style={inputStyle}
           />
+          <p style={{ opacity: 0.55, fontSize: 12, marginTop: -4, marginBottom: 12 }}>
+            Ugandan numbers work with or without the country code. Outside Uganda, include it.
+          </p>
           <button className="btn" style={{ width: '100%' }} type="submit" disabled={loading}>
             {loading ? 'Sending…' : 'Send code'}
           </button>

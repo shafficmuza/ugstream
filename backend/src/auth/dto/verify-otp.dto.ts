@@ -1,7 +1,10 @@
-import { IsOptional, IsPhoneNumber, IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length, MaxLength, MinLength } from 'class-validator';
 
 export class VerifyOtpDto {
-  @IsPhoneNumber('UG')
+  /** See RequestOtpDto — normalised and validated by `toE164()` in the service. */
+  @IsString()
+  @MinLength(7)
+  @MaxLength(24)
   phone: string;
 
   @IsString()

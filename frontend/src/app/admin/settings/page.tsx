@@ -9,12 +9,38 @@ import { labelStyle, inputStyle, uploadFile } from '../shared';
 type FormState = Pick<
   AppSettings,
   'appName' | 'tagline' | 'supportEmail' | 'supportPhone' | 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl'
-> & { mobileMoneyProvider: string; smsProvider: string; maxSessions: number; maxStreams: number };
+> & {
+  mobileMoneyProvider: string;
+  smsProvider: string;
+  maxSessions: number;
+  maxStreams: number;
+  otpCooldownSeconds: number;
+  otpPerHour: number;
+  otpPerDay: number;
+};
 
-const SMS_OPTIONS: { value: string; label: string }[] = [
-  { value: 'africastalking', label: "Africa's Talking" },
-  { value: 'twilio', label: 'Twilio' },
+const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
+  {
+    value: 'auto',
+    label: 'Automatic — cheapest route per number (recommended)',
+    hint: "East African numbers go via Africa's Talking (~UGX 30). Everywhere else goes via Twilio, which is under a cent for US/UK numbers but around $0.30 to Uganda. Both sets of credentials below are used.",
+  },
+  {
+    value: 'africastalking',
+    label: "Africa's Talking only",
+    hint: 'Every code is sent through Africa’s Talking, including to subscribers abroad, where delivery is unreliable. Use during a Twilio outage.',
+  },
+  {
+    value: 'twilio',
+    label: 'Twilio only',
+    hint: 'Every code is sent through Twilio, including Ugandan numbers at roughly 30x the cost. Use during an Africa’s Talking outage.',
+  },
 ];
+
+const SMS_PROVIDER_LABELS: Record<string, string> = {
+  africastalking: "Africa's Talking — East African numbers",
+  twilio: 'Twilio — international numbers',
+};
 
 const MOBILE_MONEY_OPTIONS: { value: string; label: string }[] = [
   { value: 'momo', label: 'MTN Mobile Money (direct)' },
@@ -33,9 +59,12 @@ export default function AdminSettingsPage() {
     heroBackgroundUrl: null,
     authBackgroundUrl: null,
     mobileMoneyProvider: 'momo',
-    smsProvider: 'africastalking',
+    smsProvider: 'auto',
     maxSessions: 3,
     maxStreams: 2,
+    otpCooldownSeconds: 60,
+    otpPerHour: 3,
+    otpPerDay: 10,
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,6 +78,7 @@ export default function AdminSettingsPage() {
   const [credInputs, setCredInputs] = useState<Record<string, string>>({});
   const [savingCreds, setSavingCreds] = useState(false);
   const [savingLimits, setSavingLimits] = useState(false);
+  const [savingOtpLimits, setSavingOtpLimits] = useState(false);
 
   function loadSmsCredentials() {
     const token = getAccessToken();
@@ -136,9 +166,12 @@ export default function AdminSettingsPage() {
         heroBackgroundUrl: settings.heroBackgroundUrl,
         authBackgroundUrl: settings.authBackgroundUrl,
         mobileMoneyProvider: settings.mobileMoneyProvider ?? 'momo',
-        smsProvider: settings.smsProvider ?? 'africastalking',
+        smsProvider: settings.smsProvider ?? 'auto',
         maxSessions: settings.maxSessions ?? 3,
         maxStreams: settings.maxStreams ?? 2,
+        otpCooldownSeconds: settings.otpCooldownSeconds ?? 60,
+        otpPerHour: settings.otpPerHour ?? 3,
+        otpPerDay: settings.otpPerDay ?? 10,
       });
       setLoaded(true);
     });
@@ -168,6 +201,29 @@ export default function AdminSettingsPage() {
       setMessage(e.message ?? 'Failed to update limits.');
     } finally {
       setSavingLimits(false);
+    }
+  }
+
+  async function saveOtpLimits() {
+    const token = getAccessToken();
+    if (!token) return;
+    setSavingOtpLimits(true);
+    setMessage(null);
+    try {
+      await apiFetch('/admin/settings', {
+        method: 'PATCH',
+        token,
+        body: {
+          otpCooldownSeconds: form.otpCooldownSeconds,
+          otpPerHour: form.otpPerHour,
+          otpPerDay: form.otpPerDay,
+        },
+      });
+      setMessage('OTP limits updated.');
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to update OTP limits.');
+    } finally {
+      setSavingOtpLimits(false);
     }
   }
 
@@ -436,7 +492,7 @@ export default function AdminSettingsPage() {
         switches login to real SMS codes. Credentials are stored securely and never shown back.
       </p>
 
-      <label style={labelStyle}>SMS provider</label>
+      <label style={labelStyle}>SMS routing</label>
       <select style={inputStyle} value={form.smsProvider} onChange={(e) => saveSmsProvider(e.target.value)}>
         {SMS_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
@@ -444,11 +500,25 @@ export default function AdminSettingsPage() {
           </option>
         ))}
       </select>
+      <p style={{ opacity: 0.6, fontSize: 12, marginTop: 6, marginBottom: 4 }}>
+        {SMS_OPTIONS.find((o) => o.value === form.smsProvider)?.hint}
+      </p>
 
-      {smsProviders
-        .filter((p) => p.provider === form.smsProvider)
-        .map((p) => (
+      {/*
+        Every provider's credentials stay visible regardless of the routing
+        mode. Filtering these to the selected provider — as this page used to —
+        silently hid the Africa's Talking fields whenever routing was set to
+        Twilio, making it impossible to enter the credentials that would let
+        you switch back.
+      */}
+      {smsProviders.map((p) => (
           <div key={p.provider} style={{ border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px 14px', marginTop: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, opacity: 0.85 }}>
+              {SMS_PROVIDER_LABELS[p.provider] ?? p.provider}
+              {form.smsProvider !== 'auto' && form.smsProvider !== p.provider && (
+                <span style={{ fontWeight: 400, opacity: 0.6 }}> — not in use with the current routing</span>
+              )}
+            </div>
             {p.keys.map((k) => (
               <div key={k.key} style={{ marginBottom: 8 }}>
                 <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
@@ -473,6 +543,64 @@ export default function AdminSettingsPage() {
           {savingSms ? 'Saving…' : 'Save SMS credentials'}
         </button>
       )}
+
+      <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>OTP limits (per phone number)</h2>
+      <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+        Caps how many login codes one number can trigger. This is spend protection: every code
+        is a paid message, and the per-address limit on the endpoint does nothing against an
+        attacker rotating addresses. Set any field to 0 to disable that check.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Cooldown (seconds)</label>
+          <input
+            style={inputStyle}
+            type="number"
+            min={0}
+            max={3600}
+            value={form.otpCooldownSeconds}
+            onChange={(e) => setForm((f) => ({ ...f, otpCooldownSeconds: Number(e.target.value) }))}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Max per hour</label>
+          <input
+            style={inputStyle}
+            type="number"
+            min={0}
+            max={50}
+            value={form.otpPerHour}
+            onChange={(e) => setForm((f) => ({ ...f, otpPerHour: Number(e.target.value) }))}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Max per day</label>
+          <input
+            style={inputStyle}
+            type="number"
+            min={0}
+            max={200}
+            value={form.otpPerDay}
+            onChange={(e) => setForm((f) => ({ ...f, otpPerDay: Number(e.target.value) }))}
+          />
+        </div>
+      </div>
+      <p style={{ opacity: 0.5, fontSize: 12, marginTop: 8, marginBottom: 12 }}>
+        Defaults are 60s / 3 per hour / 10 per day. The cooldown stops a user hammering
+        &ldquo;resend&rdquo;; the daily cap stops an attacker pacing requests to stay under the
+        hourly one. These apply only once a gateway is configured — with none, no message is
+        sent and nothing is charged.
+      </p>
+
+      <button
+        className="btn"
+        style={{ width: '100%', marginBottom: 8 }}
+        onClick={saveOtpLimits}
+        disabled={savingOtpLimits}
+      >
+        {savingOtpLimits ? 'Saving…' : 'Save OTP limits'}
+      </button>
 
       {message && <p style={{ marginTop: 12, opacity: 0.8 }}>{message}</p>}
     </div>

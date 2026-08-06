@@ -1,12 +1,50 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SecretsService } from '../common/secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { callingCode } from './phone.util';
+
+export type SmsProvider = 'africastalking' | 'twilio';
 
 /**
- * SMS delivery for OTP. Two gateways supported — Africa's Talking and Twilio
- * — selected by AppSettings.smsProvider (admin UI). Credentials come from the
- * admin-editable secrets store (DB → env). If the active provider isn't
- * configured, falls back to logging the message (dev/testing).
+ * Country calling codes routed to Africa's Talking when routing is 'auto'.
+ *
+ * These are the East African markets where AT charges roughly UGX 30 a message
+ * (~$0.01) against Twilio's ~$0.30 international rate — a ~30x difference that
+ * matters enormously at our price points: a single Twilio message to Uganda
+ * costs more than the entire UGX 1,000 Daily plan grosses.
+ *
+ * Everywhere else — the diaspora, which is where the Monthly subscribers are —
+ * Twilio is both cheaper (US/UK numbers are under a cent) and far more likely
+ * to actually deliver, so it takes everything not listed here.
+ *
+ * Extend this list only for countries Africa's Talking genuinely covers;
+ * routing a number to a provider that cannot deliver it fails login silently
+ * from the user's point of view.
+ */
+const AFRICAS_TALKING_MARKETS: Record<string, string> = {
+  '256': 'Uganda',
+  '254': 'Kenya',
+  '255': 'Tanzania',
+  '250': 'Rwanda',
+};
+
+/**
+ * SMS delivery for OTP. Two gateways — Africa's Talking and Twilio — selected
+ * per recipient by AppSettings.smsProvider:
+ *
+ *   'auto'           route by country code (see AFRICAS_TALKING_MARKETS)
+ *   'africastalking' force Africa's Talking for every number
+ *   'twilio'         force Twilio for every number
+ *
+ * The forced modes exist for outages and for deployments that only ever hold
+ * one provider's credentials. 'auto' is the default and the only mode that is
+ * both cheap domestically and deliverable internationally.
+ *
+ * Credentials come from the admin-editable secrets store (DB → env). If the
+ * routed provider isn't configured we fall back to the other one rather than
+ * dropping the message: paying more to deliver a login code beats not
+ * delivering it. If neither is configured, the message is logged and nothing
+ * is sent (dev/testing).
  *
  * Keys:
  *   africastalking: SMS_AT_USERNAME, SMS_AT_API_KEY, SMS_AT_SENDER_ID?, SMS_AT_ENV?
@@ -21,14 +59,16 @@ export class SmsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  private async provider(): Promise<'africastalking' | 'twilio'> {
+  /** Admin-selected routing mode. */
+  private async routingMode(): Promise<'auto' | SmsProvider> {
     const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
-    return s?.smsProvider === 'twilio' ? 'twilio' : 'africastalking';
+    const mode = s?.smsProvider;
+    return mode === 'twilio' || mode === 'africastalking' ? mode : 'auto';
   }
 
-  /** True once the active provider's credentials are present. */
-  async isConfigured(): Promise<boolean> {
-    if ((await this.provider()) === 'twilio') {
+  /** True once a given provider's credentials are all present. */
+  async isProviderConfigured(provider: SmsProvider): Promise<boolean> {
+    if (provider === 'twilio') {
       return (
         (await this.secrets.isSet('SMS_TWILIO_ACCOUNT_SID')) &&
         (await this.secrets.isSet('SMS_TWILIO_AUTH_TOKEN')) &&
@@ -38,12 +78,52 @@ export class SmsService {
     return (await this.secrets.isSet('SMS_AT_USERNAME')) && (await this.secrets.isSet('SMS_AT_API_KEY'));
   }
 
+  /**
+   * True once *any* gateway can send. Deliberately not per-provider: this is
+   * what disables the OTP_STATIC_CODE login bypass (see auth.service), and the
+   * bypass must switch off the moment real codes can reach anyone at all.
+   */
+  async isConfigured(): Promise<boolean> {
+    return (
+      (await this.isProviderConfigured('africastalking')) || (await this.isProviderConfigured('twilio'))
+    );
+  }
+
+  /**
+   * Which provider a number routes to on price grounds, before considering
+   * whether that provider is actually configured. Pure and side-effect free so
+   * the routing table can be tested directly.
+   */
+  routeFor(e164: string, mode: 'auto' | SmsProvider): SmsProvider {
+    if (mode !== 'auto') return mode;
+    return AFRICAS_TALKING_MARKETS[callingCode(e164)] ? 'africastalking' : 'twilio';
+  }
+
+  /** Routed provider, downgraded to whatever is actually usable. */
+  private async resolveProvider(e164: string): Promise<SmsProvider | null> {
+    const preferred = this.routeFor(e164, await this.routingMode());
+    if (await this.isProviderConfigured(preferred)) return preferred;
+
+    const fallback: SmsProvider = preferred === 'twilio' ? 'africastalking' : 'twilio';
+    if (await this.isProviderConfigured(fallback)) {
+      this.logger.warn(
+        `${preferred} is not configured — sending to ${e164} via ${fallback} instead. ` +
+          (fallback === 'twilio'
+            ? 'This costs roughly 30x more per message; configure Africa’s Talking.'
+            : 'Delivery outside East Africa is unreliable on this provider; configure Twilio.'),
+      );
+      return fallback;
+    }
+    return null;
+  }
+
   async send(phone: string, message: string): Promise<void> {
-    if (!(await this.isConfigured())) {
-      this.logger.warn(`[SMS STUB — gateway not configured] to ${phone}: ${message}`);
+    const provider = await this.resolveProvider(phone);
+    if (!provider) {
+      this.logger.warn(`[SMS STUB — no gateway configured] to ${phone}: ${message}`);
       return;
     }
-    if ((await this.provider()) === 'twilio') return this.sendViaTwilio(phone, message);
+    if (provider === 'twilio') return this.sendViaTwilio(phone, message);
     return this.sendViaAfricasTalking(phone, message);
   }
 

@@ -33,9 +33,24 @@ model AppSettings {
   // Stripe. Admin flips this in the UI; the actual API credentials live in
   // env, never the DB.
   mobileMoneyProvider String @default("momo") @map("mobile_money_provider") @db.VarChar(20)
-  // Active SMS/OTP gateway: 'africastalking' | 'twilio'. Credentials live in
-  // the secrets store; admin flips this in the UI.
-  smsProvider       String   @default("africastalking") @map("sms_provider") @db.VarChar(20)
+  // SMS/OTP routing: 'auto' | 'africastalking' | 'twilio'. Under 'auto' each
+  // number is routed by country code — East African numbers to Africa's
+  // Talking at ~$0.01, everything else to Twilio, which is under a cent for
+  // US/UK numbers but ~$0.30 to Uganda. The forced modes exist for outages.
+  // Credentials live in the secrets store; admin flips this in the UI.
+  smsProvider       String   @default("auto") @map("sms_provider") @db.VarChar(20)
+  // Per-number OTP limits. Admin-tunable because the right numbers depend on
+  // what a message costs, and because an SMS-pumping attack is something you
+  // need to be able to clamp down on at 2am without shipping a deploy.
+  //
+  // These are per phone number and complement the per-IP throttle on the
+  // endpoint, which alone stops nothing distributed: 3/min/IP is ~$54/hour of
+  // Twilio traffic from a single address and unbounded across a botnet.
+  //
+  // 0 means unlimited on each, handled explicitly by the enforcing code.
+  otpCooldownSeconds Int     @default(60) @map("otp_cooldown_seconds")
+  otpPerHour         Int     @default(3) @map("otp_per_hour")
+  otpPerDay          Int     @default(10) @map("otp_per_day")
   // Push notifications. `pushEnabled` is the master switch so a noisy release
   // can be silenced without a deploy. `pushAudience` is 'all' | 'subscribers':
   // new-title alerts default to everyone because they are the main lever for
@@ -145,7 +160,11 @@ enum UserStatus {
 
 model User {
   id           BigInt    @id @default(autoincrement())
-  phone        String    @unique @db.VarChar(15)
+  // E.164, normalised on every auth path (see auth/phone.util.ts). 15 digits
+  // is the E.164 maximum, so the '+' needs a 16th character — the old
+  // VarChar(15) would have rejected the longest legitimate international
+  // numbers outright.
+  phone        String    @unique @db.VarChar(20)
   displayName  String?   @map("display_name") @db.VarChar(100)
   email        String?   @db.VarChar(120)
   address      String?   @db.VarChar(200)
@@ -167,13 +186,19 @@ model User {
 
 model OtpCode {
   id         BigInt    @id @default(autoincrement())
-  phone      String    @db.VarChar(15)
+  // E.164, so wide enough for the longest international number plus '+'.
+  phone      String    @db.VarChar(20)
   codeHash   String    @map("code_hash")
+  // Send time, which is what the per-number rate limits count. Previously
+  // inferred from expiresAt; that worked only while every code had the same
+  // TTL and silently skewed every window by it.
+  createdAt  DateTime  @default(now()) @map("created_at")
   expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
   attempts   Int       @default(0) @db.SmallInt
 
   @@index([phone, expiresAt])
+  @@index([phone, createdAt])
   @@map("otp_codes")
 }
 

@@ -78,7 +78,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _phone,
                   enabled: !_codeSent,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone number', hintText: 'e.g. 0772123456', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: 'e.g. 0772123456',
+                    helperText: 'Outside Uganda? Include your country code.',
+                    helperStyle: TextStyle(color: Colors.white38, fontSize: 11),
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 if (_codeSent) ...[
                   const SizedBox(height: 14),
