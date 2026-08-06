@@ -10,6 +10,8 @@ export interface AppSettings {
   authBackgroundUrl: string | null;
   mobileMoneyProvider?: string;
   smsProvider?: string;
+  maxSessions?: number;
+  maxStreams?: number;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -22,6 +24,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   authBackgroundUrl: null,
   mobileMoneyProvider: 'momo',
   smsProvider: 'africastalking',
+  maxSessions: 3,
+  maxStreams: 2,
 };
 
 export async function fetchSettings(): Promise<AppSettings> {

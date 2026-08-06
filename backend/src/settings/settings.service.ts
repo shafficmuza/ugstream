@@ -13,6 +13,8 @@ export interface UpdateSettingsInput {
   smsProvider?: string;
   pushEnabled?: boolean;
   pushAudience?: string;
+  maxSessions?: number;
+  maxStreams?: number;
 }
 
 @Injectable()

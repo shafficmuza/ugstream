@@ -25,15 +25,21 @@ export default function WatchPage() {
   const router = useRouter();
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Distinguished from a generic error so the user gets a retry button: the
+  // condition clears by itself once another device stops, and sending them
+  // back to the title page to start over is needless friction.
+  const [streamLimit, setStreamLimit] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  const startPlayback = useCallback(() => {
     const token = getAccessToken();
     if (!token) {
       router.replace('/login');
       return;
     }
+    setError(null);
+    setStreamLimit(false);
     apiFetch<PlaybackInfo>(`/episodes/${params.episodeId}/play`, { method: 'POST', token })
       .then(setPlayback)
       .catch((e) => {
@@ -43,10 +49,29 @@ export default function WatchPage() {
         } else if (err.statusCode === 401) {
           router.replace('/login');
         } else {
+          // 409 is the concurrent-stream cap: the account is entitled, it is
+          // just already watching elsewhere.
+          if (err.statusCode === 409) setStreamLimit(true);
           setError(err.message ?? 'Could not start playback.');
         }
       });
   }, [params.episodeId, router]);
+
+  useEffect(() => {
+    startPlayback();
+  }, [startPlayback]);
+
+  // Hand the stream slot back as soon as this player goes away, so another
+  // device is not made to wait out the staleness window. Best-effort by
+  // design — the lease expires on its own if this never lands.
+  useEffect(() => {
+    return () => {
+      const token = getAccessToken();
+      if (token) {
+        apiFetch('/playback/stream', { method: 'DELETE', token }).catch(() => {});
+      }
+    };
+  }, []);
 
   const showChrome = useCallback(() => {
     setChromeVisible(true);
@@ -91,6 +116,11 @@ export default function WatchPage() {
           {error ? (
             <>
               <p style={{ color: '#ff6b6b', marginBottom: 16 }}>{error}</p>
+              {streamLimit && (
+                <button className="btn" style={{ marginRight: 8 }} onClick={startPlayback}>
+                  Try again
+                </button>
+              )}
               <button className="btn" onClick={goBack}>
                 Go back
               </button>

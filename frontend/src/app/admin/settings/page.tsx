@@ -9,7 +9,7 @@ import { labelStyle, inputStyle, uploadFile } from '../shared';
 type FormState = Pick<
   AppSettings,
   'appName' | 'tagline' | 'supportEmail' | 'supportPhone' | 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl'
-> & { mobileMoneyProvider: string; smsProvider: string };
+> & { mobileMoneyProvider: string; smsProvider: string; maxSessions: number; maxStreams: number };
 
 const SMS_OPTIONS: { value: string; label: string }[] = [
   { value: 'africastalking', label: "Africa's Talking" },
@@ -34,6 +34,8 @@ export default function AdminSettingsPage() {
     authBackgroundUrl: null,
     mobileMoneyProvider: 'momo',
     smsProvider: 'africastalking',
+    maxSessions: 3,
+    maxStreams: 2,
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,6 +48,7 @@ export default function AdminSettingsPage() {
   const [savingSms, setSavingSms] = useState(false);
   const [credInputs, setCredInputs] = useState<Record<string, string>>({});
   const [savingCreds, setSavingCreds] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
 
   function loadSmsCredentials() {
     const token = getAccessToken();
@@ -134,6 +137,8 @@ export default function AdminSettingsPage() {
         authBackgroundUrl: settings.authBackgroundUrl,
         mobileMoneyProvider: settings.mobileMoneyProvider ?? 'momo',
         smsProvider: settings.smsProvider ?? 'africastalking',
+        maxSessions: settings.maxSessions ?? 3,
+        maxStreams: settings.maxStreams ?? 2,
       });
       setLoaded(true);
     });
@@ -146,6 +151,25 @@ export default function AdminSettingsPage() {
       loadSmsCredentials();
     }
   }, []);
+
+  async function saveLimits() {
+    const token = getAccessToken();
+    if (!token) return;
+    setSavingLimits(true);
+    setMessage(null);
+    try {
+      await apiFetch('/admin/settings', {
+        method: 'PATCH',
+        token,
+        body: { maxSessions: form.maxSessions, maxStreams: form.maxStreams },
+      });
+      setMessage('Sharing limits updated.');
+    } catch (e: any) {
+      setMessage(e.message ?? 'Failed to update limits.');
+    } finally {
+      setSavingLimits(false);
+    }
+  }
 
   async function saveProvider(provider: string) {
     const token = getAccessToken();
@@ -360,6 +384,51 @@ export default function AdminSettingsPage() {
           {savingCreds ? 'Saving…' : 'Save payment credentials'}
         </button>
       )}
+
+      <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>Account sharing limits</h2>
+      <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+        Set <b>0</b> for unlimited. Changes apply immediately — signed-in devices are not
+        disconnected, but the next sign-in or play request is judged against the new number.
+      </p>
+
+      <label style={labelStyle}>Devices signed in at once</label>
+      <input
+        style={inputStyle}
+        type="number"
+        min={0}
+        max={20}
+        value={form.maxSessions}
+        onChange={(e) => setForm((f) => ({ ...f, maxSessions: Number(e.target.value) }))}
+      />
+      <p style={{ opacity: 0.5, fontSize: 12, marginTop: 4, marginBottom: 12 }}>
+        Signing in past this limit signs out the device that has been idle longest, rather
+        than refusing the login — so a lost or replaced phone can never lock someone out of
+        their own account.
+      </p>
+
+      <label style={labelStyle}>Simultaneous streams</label>
+      <input
+        style={inputStyle}
+        type="number"
+        min={0}
+        max={20}
+        value={form.maxStreams}
+        onChange={(e) => setForm((f) => ({ ...f, maxStreams: Number(e.target.value) }))}
+      />
+      <p style={{ opacity: 0.5, fontSize: 12, marginTop: 4, marginBottom: 12 }}>
+        How many devices may play at the same time. Kept separate from the sign-in limit on
+        purpose: a household kept signed in on five devices may still only ever watch on two.
+        A device that stops playing frees its slot within a minute.
+      </p>
+
+      <button
+        className="btn"
+        style={{ width: '100%', marginBottom: 8 }}
+        onClick={saveLimits}
+        disabled={savingLimits}
+      >
+        {savingLimits ? 'Saving…' : 'Save sharing limits'}
+      </button>
 
       <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>SMS / OTP gateway</h2>
       <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>

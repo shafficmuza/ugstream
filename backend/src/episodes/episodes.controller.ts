@@ -25,7 +25,7 @@ export class EpisodesController {
 
   @Post('episodes/:id/play')
   play(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
-    return this.episodes.play(auth.userId, BigInt(id));
+    return this.episodes.play(auth.userId, BigInt(id), auth.sessionId);
   }
 
   @Put('episodes/:id/progress')
@@ -34,7 +34,12 @@ export class EpisodesController {
     @Param('id') id: string,
     @Body() body: SaveProgressDto,
   ) {
-    return this.episodes.saveProgress(auth.userId, BigInt(id), body.positionSecs);
+    return this.episodes.saveProgress(
+      auth.userId,
+      BigInt(id),
+      body.positionSecs,
+      auth.sessionId,
+    );
   }
 
   @Get('me/continue-watching')

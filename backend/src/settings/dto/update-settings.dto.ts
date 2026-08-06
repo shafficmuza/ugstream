@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
@@ -33,4 +33,13 @@ export class UpdateSettingsDto {
 
   @IsOptional() @IsIn(['all', 'subscribers'])
   pushAudience?: string;
+
+  // Upper bounds are sanity rails, not policy: they stop a typo turning a
+  // paid-tier limit into an effectively unlimited account. 0 means unlimited
+  // and is handled explicitly by the enforcing code.
+  @IsOptional() @IsInt() @Min(0) @Max(20)
+  maxSessions?: number;
+
+  @IsOptional() @IsInt() @Min(0) @Max(20)
+  maxStreams?: number;
 }

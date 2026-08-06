@@ -40,6 +40,20 @@ class PlayerScreen extends StatefulWidget {
         if (context.mounted) {
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen()));
         }
+      } else if (e.statusCode == 409 && context.mounted) {
+        // Concurrent-stream limit. Entitled, just watching elsewhere — offer a
+        // retry rather than a dead-end message, since the condition clears the
+        // moment the other device stops.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => open(context, episodeId, startAt: startAt),
+            ),
+          ),
+        );
       } else if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
@@ -149,6 +163,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _saveProgress();
+    // Free the stream slot for the account's other devices right away.
+    _catalog.releaseStream();
     _progressTimer?.cancel();
     _hideTimer?.cancel();
     _video?.removeListener(_onTick);

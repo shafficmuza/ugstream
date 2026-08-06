@@ -43,6 +43,19 @@ model AppSettings {
   // admin may want to reverse.
   pushEnabled       Boolean  @default(true) @map("push_enabled")
   pushAudience      String   @default("all") @map("push_audience") @db.VarChar(20)
+  // Account-sharing limits, both admin-tunable because the right number is a
+  // commercial decision that changes with pricing, not an engineering one.
+  //
+  // maxSessions caps how many devices may stay signed in; a new sign-in past
+  // the cap evicts the least recently used session rather than being refused,
+  // so a user replacing a phone is never locked out of their own account.
+  //
+  // maxStreams caps how many may play at once. Deliberately separate: a
+  // household legitimately keeps several devices signed in while only ever
+  // watching on one or two, and conflating the two would either permit
+  // wholesale password sharing or punish normal use.
+  maxSessions       Int      @default(3) @map("max_sessions")
+  maxStreams        Int      @default(2) @map("max_streams")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
@@ -147,6 +160,7 @@ model User {
   watchHistory  WatchHistory[]
   myList        MyListItem[]
   devices       Device[]
+  streamLeases  StreamLease[]
 
   @@map("users")
 }
@@ -161,6 +175,34 @@ model OtpCode {
 
   @@index([phone, expiresAt])
   @@map("otp_codes")
+}
+
+// A claim on one of the account's concurrent-stream slots.
+//
+// Held per *session*, not per playback: re-opening the player on the same
+// device reuses its lease rather than consuming a second slot, and one device
+// can therefore never occupy two. Kept alive by the progress heartbeat the
+// players already send every 15s; a lease with no recent heartbeat is treated
+// as gone, so a crashed app, a closed laptop lid or a dead battery frees the
+// slot on its own instead of stranding it until some manual cleanup.
+model StreamLease {
+  id         String    @id @default(uuid())
+  userId     BigInt    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // The auth session (JWT `sid`) holding the slot.
+  sessionId  String    @map("session_id")
+  episodeId  BigInt    @map("episode_id")
+  deviceLabel String?  @map("device_label") @db.VarChar(100)
+  startedAt  DateTime  @default(now()) @map("started_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  // Set when playback is stopped cleanly, so the slot frees immediately
+  // rather than after the staleness window.
+  endedAt    DateTime? @map("ended_at")
+
+  // One live lease per auth session — the upsert key.
+  @@unique([sessionId])
+  @@index([userId, lastSeenAt])
+  @@map("stream_leases")
 }
 
 model Session {

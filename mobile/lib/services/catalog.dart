@@ -34,7 +34,9 @@ class CatalogService {
     return list.map((t) => TitleCard.fromJson(t)).toList();
   }
 
-  /// Start playback. Throws ApiException(402) when the user isn't entitled.
+  /// Start playback. Throws ApiException(402) when the user isn't entitled,
+  /// or ApiException(409) when the account is already at its simultaneous
+  /// stream limit — the message from the server names how many devices.
   Future<PlayInfo> play(String episodeId) async {
     final res = await _api.request('/episodes/$episodeId/play', method: 'POST');
     return PlayInfo.fromJson(res.data);
@@ -42,6 +44,17 @@ class CatalogService {
 
   Future<void> saveProgress(String episodeId, int positionSecs) async {
     await _api.request('/episodes/$episodeId/progress', method: 'PUT', data: {'positionSecs': positionSecs});
+  }
+
+  /// Give the concurrent-stream slot back immediately. Best-effort: the
+  /// server expires the lease on its own if this never arrives, so a failure
+  /// here costs at most a minute of a slot staying held.
+  Future<void> releaseStream() async {
+    try {
+      await _api.request('/playback/stream', method: 'DELETE');
+    } catch (_) {
+      /* nothing useful to do; the lease times out server-side */
+    }
   }
 
   Future<List<ContinueItem>> continueWatching() async {

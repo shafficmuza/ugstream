@@ -5,9 +5,10 @@ import { CloudflareStreamService } from './cloudflare-stream.service';
 import { TranscodeService } from './transcode.service';
 import { EntitlementsService } from '../common/entitlements.service';
 import { R2Module } from '../media-storage/r2.module';
+import { PlaybackModule } from '../playback/playback.module';
 
 @Module({
-  imports: [R2Module],
+  imports: [R2Module, PlaybackModule],
   controllers: [EpisodesController],
   providers: [EpisodesService, CloudflareStreamService, TranscodeService, EntitlementsService],
   exports: [CloudflareStreamService, EpisodesService],

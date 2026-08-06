@@ -7,6 +7,7 @@ import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
 import { R2Service } from '../media-storage/r2.service';
 import { TranscodeService } from './transcode.service';
+import { StreamLeaseService } from '../playback/stream-lease.service';
 
 @Injectable()
 export class EpisodesService {
@@ -16,10 +17,11 @@ export class EpisodesService {
     private readonly stream: CloudflareStreamService,
     private readonly r2: R2Service,
     private readonly transcode: TranscodeService,
+    private readonly leases: StreamLeaseService,
     private readonly config: ConfigService,
   ) {}
 
-  async play(userId: bigint, episodeId: bigint) {
+  async play(userId: bigint, episodeId: bigint, sessionId?: string, deviceLabel?: string | null) {
     let episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
 
@@ -58,6 +60,13 @@ export class EpisodesService {
         },
         HttpStatus.PAYMENT_REQUIRED,
       );
+    }
+
+    // Claim a concurrent-stream slot, after entitlement so a user who cannot
+    // watch this at all is told that rather than being sent to stop another
+    // device first. Throws 409 when the account is already at its limit.
+    if (sessionId) {
+      await this.leases.acquire(userId, sessionId, episodeId, deviceLabel);
     }
 
     const [history, title] = await Promise.all([
@@ -323,9 +332,18 @@ export class EpisodesService {
     return total || null;
   }
 
-  async saveProgress(userId: bigint, episodeId: bigint, positionSecs: number) {
+  async saveProgress(
+    userId: bigint,
+    episodeId: bigint,
+    positionSecs: number,
+    sessionId?: string,
+  ) {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
+
+    // Doubles as the stream-lease heartbeat: both players already send this
+    // every 15s, so the limit needs no separate polling loop of its own.
+    if (sessionId) await this.leases.touch(sessionId, episodeId);
 
     const completed = episode.durationSecs
       ? positionSecs >= episode.durationSecs * 0.92

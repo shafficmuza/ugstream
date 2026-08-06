@@ -11,6 +11,7 @@ import { TitlesModule } from './titles/titles.module';
 import { GenresModule } from './genres/genres.module';
 import { KindsModule } from './kinds/kinds.module';
 import { EpisodesModule } from './episodes/episodes.module';
+import { PlaybackModule } from './playback/playback.module';
 import { PlansModule } from './plans/plans.module';
 import { PaymentsModule } from './payments/payments.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -38,6 +39,7 @@ import { HealthController } from './common/health.controller';
     GenresModule,
     KindsModule,
     EpisodesModule,
+    PlaybackModule,
     PlansModule,
     PaymentsModule,
     WebhooksModule,

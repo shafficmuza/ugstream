@@ -14,7 +14,8 @@ import { ActivityService } from '../common/activity.service';
 const OTP_TTL_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_REQUESTS_PER_HOUR = 3;
-const MAX_ACTIVE_SESSIONS = 3;
+/** Used only if the settings row is somehow missing; the real value is admin-set. */
+const DEFAULT_MAX_SESSIONS = 3;
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL_DAYS = 30;
 
@@ -152,21 +153,30 @@ export class AuthService {
   }
 
   private async issueSession(userId: bigint, deviceLabel?: string) {
+    const settings = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
+    const maxSessions = settings?.maxSessions ?? DEFAULT_MAX_SESSIONS;
+
     const activeSessions = await this.prisma.session.findMany({
       where: { userId, revokedAt: null },
       orderBy: { lastSeenAt: 'asc' },
     });
 
-    // Enforce a device cap by evicting the oldest session(s) rather than
-    // blocking new logins outright.
-    if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
-      const toRevoke = activeSessions.slice(
-        0,
-        activeSessions.length - MAX_ACTIVE_SESSIONS + 1,
-      );
+    // Enforce a device cap by evicting the least recently used session(s)
+    // rather than blocking new logins outright: refusing the sign-in would
+    // strand someone whose old handset is lost or wiped. 0 or less disables
+    // the cap entirely, for an admin who does not want one.
+    if (maxSessions > 0 && activeSessions.length >= maxSessions) {
+      const toRevoke = activeSessions.slice(0, activeSessions.length - maxSessions + 1);
       await this.prisma.session.updateMany({
         where: { id: { in: toRevoke.map((s) => s.id) } },
         data: { revokedAt: new Date() },
+      });
+      // An evicted device is also no longer allowed to hold a stream slot;
+      // leaving its lease behind would keep a slot occupied by a session that
+      // can no longer play anything.
+      await this.prisma.streamLease.updateMany({
+        where: { sessionId: { in: toRevoke.map((s) => s.id) }, endedAt: null },
+        data: { endedAt: new Date() },
       });
     }
 
