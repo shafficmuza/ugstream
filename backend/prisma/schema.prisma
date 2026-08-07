@@ -208,6 +208,39 @@ model OtpCode {
   @@map("otp_codes")
 }
 
+// A break-glass sign-in code that opens any ordinary account, for use when the
+// SMS gateway is failing and per-account recovery codes cannot be issued fast
+// enough.
+//
+// This is deliberately a *bounded* backdoor, not the unlimited static code it
+// replaces. Every field below exists to cap the blast radius if the code
+// leaks, because a code that opens any account is exactly what an attacker
+// most wants:
+//
+//   - expiresAt   it dies on its own; an admin cannot forget to turn it off
+//   - revokedAt   and can kill it instantly before then
+//   - failures    wrong guesses disable it, so it cannot be brute forced
+//                 across the user base (~500k tries would otherwise be all
+//                 that stands between an attacker and every account)
+//   - uses        how many accounts it has opened, visible in the admin UI
+//
+// Only one is ever active: issuing revokes its predecessor. Privileged
+// accounts are excluded in the verify path, so a leak cannot escalate to the
+// admin panel — see AuthService.verifyOtp.
+model MasterCode {
+  id              BigInt    @id @default(autoincrement())
+  codeHash        String    @map("code_hash")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  expiresAt       DateTime  @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  issuedByAdminId BigInt    @map("issued_by_admin_id")
+  uses            Int       @default(0)
+  failures        Int       @default(0)
+
+  @@index([revokedAt, expiresAt])
+  @@map("master_codes")
+}
+
 // A claim on one of the account's concurrent-stream slots.
 //
 // Held per *session*, not per playback: re-opening the player on the same

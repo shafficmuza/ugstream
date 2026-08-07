@@ -11,7 +11,10 @@ import { AuthService } from './auth.service';
  * which the user's own "Send code" press would shadow, since the sign-in
  * screen requires that press before a code can be entered at all.
  */
-async function makeService(codes: { id: number; code: string; attempts?: number }[]) {
+async function makeService(
+  codes: { id: number; code: string; attempts?: number }[],
+  master?: { code: string; user?: Record<string, any> | null },
+) {
   const rows = await Promise.all(
     codes.map(async (c) => ({
       id: BigInt(c.id),
@@ -43,6 +46,15 @@ async function makeService(codes: { id: number; code: string; attempts?: number 
         displayName: null,
         role: 'user',
       })),
+      // The master-code path looks the account up rather than creating one.
+      // `undefined` in the fixture means "this number has no account".
+      findUnique: jest.fn(async () =>
+        master === undefined
+          ? null
+          : master.user === undefined
+            ? { id: 1n, phone: '+256772878614', role: 'user', status: 'active' }
+            : master.user,
+      ),
     },
     appSettings: { findUnique: jest.fn(async () => ({ maxSessions: 3 })) },
     session: {
@@ -60,14 +72,23 @@ async function makeService(codes: { id: number; code: string; attempts?: number 
     streamLease: { updateMany: jest.fn(async (_a: any) => ({ count: 0 })) },
   };
 
+  const recordFailure = jest.fn(async () => undefined);
+  const recordUse = jest.fn(async () => undefined);
+  const masterCode: any = {
+    matches: jest.fn(async (submitted: string) => master !== undefined && submitted === master.code),
+    recordFailure,
+    recordUse,
+  };
+
   const service = new AuthService(
     prisma,
     { signAsync: jest.fn(async () => 'access-token') } as any,
     { get: jest.fn(() => 'secret') } as any,
     {} as any,
     { log: jest.fn() } as any,
+    masterCode,
   );
-  return { service, prisma, updateMany };
+  return { service, prisma, updateMany, masterCode, recordFailure, recordUse };
 }
 
 describe('verifyOtp with several live codes', () => {
@@ -141,5 +162,105 @@ describe('verifyOtp with several live codes', () => {
     await expect(service.verifyOtp('0772878614', '111111')).rejects.toThrow(
       'Code expired or not found',
     );
+  });
+});
+
+/**
+ * The break-glass master code.
+ *
+ * It exists for an SMS outage, so the case that matters most is the one where
+ * the user never received anything: no live code, nothing outstanding, and the
+ * master code still has to work. Everything else here is a guard rail.
+ */
+describe('verifyOtp with the master sign-in code', () => {
+  it('signs in when no code was ever received', async () => {
+    const { service } = await makeService([], { code: '424242' });
+    await expect(service.verifyOtp('0772878614', '424242')).resolves.toMatchObject({
+      accessToken: 'access-token',
+    });
+  });
+
+  it('signs in even when a real code is also outstanding', async () => {
+    const { service } = await makeService([{ id: 1, code: '111111' }], { code: '424242' });
+    await expect(service.verifyOtp('0772878614', '424242')).resolves.toMatchObject({
+      accessToken: 'access-token',
+    });
+  });
+
+  it('retires any outstanding real code once it is used', async () => {
+    const { service, updateMany } = await makeService([{ id: 1, code: '111111' }], {
+      code: '424242',
+    });
+    await service.verifyOtp('0772878614', '424242');
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { phone: '+256772878614', consumedAt: null } }),
+    );
+  });
+
+  it('prefers a real code over the master code when both match', async () => {
+    // Not a contrived collision: the master code is six digits and so is every
+    // OTP, so one number in a million shares them. The real code must win, or
+    // that user's sign-in would be logged as a master-code use.
+    const { service, masterCode } = await makeService([{ id: 1, code: '424242' }], {
+      code: '424242',
+    });
+    await service.verifyOtp('0772878614', '424242');
+    expect(masterCode.matches).not.toHaveBeenCalled();
+  });
+
+  it('refuses an account that does not exist yet', async () => {
+    // A leaked code must not be a signup generator.
+    const { service } = await makeService([], { code: '424242', user: null });
+    await expect(service.verifyOtp('0772878614', '424242')).rejects.toThrow('Incorrect code');
+  });
+
+  it('refuses a privileged account', async () => {
+    const { service } = await makeService([], {
+      code: '424242',
+      user: { id: 9n, phone: '+256772878614', role: 'admin', status: 'active' },
+    });
+    await expect(service.verifyOtp('0772878614', '424242')).rejects.toThrow(
+      'cannot be opened with a master code',
+    );
+  });
+
+  it('refuses a banned account', async () => {
+    const { service } = await makeService([], {
+      code: '424242',
+      user: { id: 9n, phone: '+256772878614', role: 'user', status: 'banned' },
+    });
+    await expect(service.verifyOtp('0772878614', '424242')).rejects.toThrow('suspended');
+  });
+
+  it('charges a wrong code against the master code, so it cannot be brute forced', async () => {
+    const { service, recordFailure } = await makeService([], { code: '424242' });
+    await expect(service.verifyOtp('0772878614', '999999')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(recordFailure).toHaveBeenCalled();
+  });
+
+  it('does not charge the master code when a real code matched', async () => {
+    const { service, recordFailure } = await makeService([{ id: 1, code: '111111' }], {
+      code: '424242',
+    });
+    await service.verifyOtp('0772878614', '111111');
+    expect(recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('counts a use only when the sign-in actually succeeded', async () => {
+    // The counter is what an admin watches during an incident to see how far
+    // the code has spread. Counting refusals — a wrong account, a privileged
+    // account — would overstate it and hide the real number.
+    const { service, recordUse } = await makeService([], {
+      code: '424242',
+      user: { id: 9n, phone: '+256772878614', role: 'admin', status: 'active' },
+    });
+    await expect(service.verifyOtp('0772878614', '424242')).rejects.toThrow(UnauthorizedException);
+    expect(recordUse).not.toHaveBeenCalled();
+
+    const ok = await makeService([], { code: '424242' });
+    await ok.service.verifyOtp('0772878614', '424242');
+    expect(ok.recordUse).toHaveBeenCalledTimes(1);
   });
 });

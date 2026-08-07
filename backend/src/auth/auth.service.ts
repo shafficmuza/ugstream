@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from './sms.service';
+import { MasterCodeService } from './master-code.service';
 import { ActivityService } from '../common/activity.service';
 import { toE164 } from './phone.util';
 
@@ -69,6 +70,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly sms: SmsService,
     private readonly activity: ActivityService,
+    private readonly masterCodes: MasterCodeService,
   ) {}
 
   /**
@@ -186,14 +188,7 @@ export class AuthService {
       orderBy: { id: 'desc' },
     });
 
-    if (candidates.length === 0) {
-      throw new UnauthorizedException('Code expired or not found. Request a new one.');
-    }
-
     const live = candidates.filter((c) => c.attempts < OTP_MAX_ATTEMPTS);
-    if (live.length === 0) {
-      throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
-    }
 
     let otp: (typeof live)[number] | undefined;
     for (const candidate of live) {
@@ -203,7 +198,23 @@ export class AuthService {
       }
     }
 
+    // No real code matched — the master code is the last thing tried, never
+    // the first, so an ordinary sign-in never touches it and its failure
+    // counter only ever moves on codes that were wrong anyway.
     if (!otp) {
+      if (await this.masterCodes.matches(code)) {
+        return this.signInWithMasterCode(phone, deviceLabel);
+      }
+      await this.masterCodes.recordFailure();
+    }
+
+    if (!otp) {
+      if (candidates.length === 0) {
+        throw new UnauthorizedException('Code expired or not found. Request a new one.');
+      }
+      if (live.length === 0) {
+        throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
+      }
       // Charge the attempt against every live code, so several outstanding
       // codes cannot multiply the number of guesses available.
       await this.prisma.otpCode.updateMany({
@@ -232,6 +243,55 @@ export class AuthService {
     }
 
     this.activity.log(user.id, 'login', 'Logged in');
+    return this.issueSession(user.id, deviceLabel);
+  }
+
+  /**
+   * Sign in on the strength of the break-glass master code.
+   *
+   * Two restrictions, both deliberate and neither configurable:
+   *
+   * The account must already exist. The master code rescues people who are
+   * locked out, and only an existing account can be locked out of; letting it
+   * mint new ones would turn a leaked code into unlimited free signups.
+   *
+   * The account must be an ordinary user. A code that opens any account is a
+   * standing risk while it lives, and the difference between "a subscriber's
+   * account was opened" and "the admin panel was opened" is the difference
+   * between an incident and a catastrophe. Admins and editors keep the
+   * per-account recovery code, which is bound to one number.
+   */
+  private async signInWithMasterCode(phone: string, deviceLabel?: string) {
+    const user = await this.prisma.user.findUnique({ where: { phone } });
+
+    // Same message as a wrong code. Telling a caller "that master code was
+    // right, but not for this number" would confirm the code to anyone
+    // probing with an unknown number.
+    if (!user) throw new UnauthorizedException('Incorrect code.');
+
+    if (user.role !== 'user') {
+      this.logger.warn(
+        `Master sign-in code refused for ${phone}: the account is ${user.role}. ` +
+          `Privileged accounts must use a per-account recovery code.`,
+      );
+      throw new UnauthorizedException(
+        'This account cannot be opened with a master code. Ask an administrator for a recovery code.',
+      );
+    }
+
+    if (user.status === 'banned') {
+      throw new UnauthorizedException('This account has been suspended.');
+    }
+
+    // Any real code still outstanding is retired, matching the ordinary path.
+    await this.prisma.otpCode.updateMany({
+      where: { phone, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+
+    await this.masterCodes.recordUse();
+    this.activity.log(user.id, 'login_master_code', 'Logged in with the master sign-in code');
+    this.logger.warn(`Master sign-in code used to open ${phone}.`);
     return this.issueSession(user.id, deviceLabel);
   }
 

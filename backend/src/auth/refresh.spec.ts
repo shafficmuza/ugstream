@@ -11,6 +11,10 @@ import { AuthService } from './auth.service';
  * a client that misses a rotation, and must still end when a long-dead token
  * is replayed.
  */
+/** No master code in play — these tests are about refresh, not sign-in. */
+const noMasterCode = () =>
+  ({ matches: async () => false, recordFailure: async () => undefined }) as any;
+
 async function makeService(sessionOverrides: Record<string, any> = {}) {
   const secret = 'verifier-secret';
   const lookup = 'abc123';
@@ -50,7 +54,7 @@ async function makeService(sessionOverrides: Record<string, any> = {}) {
 
   const jwt = { signAsync: jest.fn(async () => 'access-token') };
   const config = { get: jest.fn(() => 'secret') };
-  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any);
+  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any, noMasterCode());
   return { service, session, secret, lookup, update, updateMany, prisma };
 }
 
@@ -228,6 +232,7 @@ describe('tokens issued before the lookup format existed', () => {
       { get: jest.fn(() => 'secret') } as any,
       {} as any,
       {} as any,
+      noMasterCode(),
     );
 
     const out = await service.refresh(legacy);

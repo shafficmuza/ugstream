@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { tableStyle, thStyle, tdStyle } from '../shared';
+import { MasterCodePanel } from './master-code-panel';
 
 interface AdminUser {
   id: string;
@@ -43,8 +44,11 @@ export default function AdminUsersPage() {
   /**
    * A sign-in code for someone who cannot receive SMS. Scoped to this one
    * account, single use, expires in minutes, and recorded in the activity log
-   * against whoever issued it — which is what makes it safe to hand out, and
-   * why there is no single master code to leak.
+   * against whoever issued it.
+   *
+   * This is the right tool for one stranded user, and the only one that works
+   * for an admin or editor. The master code below is for an outage affecting
+   * many at once, where issuing these one at a time is not fast enough.
    */
   async function issueRecoveryCode(u: AdminUser) {
     const token = getAccessToken();
@@ -89,6 +93,8 @@ export default function AdminUsersPage() {
   return (
     <div>
       <h1 style={{ fontSize: 22, marginBottom: 24 }}>Users</h1>
+
+      <MasterCodePanel />
 
       {recovery && (
         <div

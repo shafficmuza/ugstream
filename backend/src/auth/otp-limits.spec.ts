@@ -7,6 +7,10 @@ import { AuthService } from './auth.service';
  * so the branches that decide whether a message is paid for are worth
  * testing directly.
  */
+/** No master code in play — these tests are about the ordinary OTP path. */
+const noMasterCode = () =>
+  ({ matches: async () => false, recordFailure: async () => undefined }) as any;
+
 function makeService(opts: {
   cooldown?: number;
   perHour?: number;
@@ -50,7 +54,14 @@ function makeService(opts: {
   const config = { get: jest.fn(() => undefined) };
   const activity = { log: jest.fn() };
 
-  const service = new AuthService(prisma, {} as any, config as any, sms as any, activity as any);
+  const service = new AuthService(
+    prisma,
+    {} as any,
+    config as any,
+    sms as any,
+    activity as any,
+    noMasterCode(),
+  );
   return { service, sms, create, count, findFirst };
 }
 
