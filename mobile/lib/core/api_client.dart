@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:meta/meta.dart';
 import 'config.dart';
 import 'token_store.dart';
 
@@ -42,6 +43,11 @@ class ApiClient {
 
   final TokenStore _tokens;
   late final Dio _dio;
+
+  /// Swap the transport so tests can exercise the refresh branches without a
+  /// server. Nothing in the app calls this.
+  @visibleForTesting
+  set debugAdapter(HttpClientAdapter adapter) => _dio.httpClientAdapter = adapter;
   Future<(String?, _RefreshOutcome)>? _refreshing;
 
   /// Called when refresh fails (session truly expired) so the app can log out.
@@ -64,10 +70,20 @@ class ApiClient {
           ),
         );
 
-    final token = auth ? await _tokens.accessToken : null;
+    // A keychain read can fail on a locked handset; that is not a reason to
+    // fail the whole request, so fall through unauthenticated and let the
+    // refresh path below decide what it means.
+    String? token;
+    if (auth) {
+      try {
+        token = await _tokens.accessToken;
+      } catch (_) {
+        token = null;
+      }
+    }
     var res = await send(token);
 
-    if (res.statusCode == 401 && auth && (await _tokens.refreshToken) != null) {
+    if (res.statusCode == 401 && auth) {
       final (fresh, outcome) = await _refresh();
       if (fresh != null) {
         res = await send(fresh);
@@ -93,8 +109,18 @@ class ApiClient {
     // Single in-flight refresh — a burst of 401s triggers exactly one call.
     return _refreshing ??= () async {
       try {
-        final refresh = await _tokens.refreshToken;
-        if (refresh == null) return (null, _RefreshOutcome.rejected);
+        final String? refresh;
+        try {
+          refresh = await _tokens.refreshToken;
+        } catch (_) {
+          // A keychain that will not answer is not a session that has ended.
+          return (null, _RefreshOutcome.unreachable);
+        }
+        // No token to present. Only the server may end a session, so this
+        // reports "could not ask" rather than "rejected": reading null from a
+        // locked keychain used to wipe the credentials of a user who was still
+        // perfectly signed in, and the caller still sees the original 401.
+        if (refresh == null) return (null, _RefreshOutcome.unreachable);
 
         // One retry: a handset waking from sleep routinely fails its first
         // request while the radio reassociates, and that must not be mistaken
