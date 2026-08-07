@@ -13,7 +13,14 @@ export function LoginForm() {
   const [country, setCountry] = useState<CountryCode>('UG');
   const [national, setNational] = useState('');
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
+  const [pin, setPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [step, setStep] = useState<'phone' | 'code' | 'pin' | 'set-pin'>('phone');
+  // Tokens from a sign-in held back while the user chooses a PIN, so the
+  // prompt cannot be dismissed by navigating away with a half-finished
+  // session — either they set one or they skip, and both land signed in.
+  const [pending, setPending] = useState<{ accessToken: string; refreshToken: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -21,6 +28,43 @@ export function LoginForm() {
   // number is incomplete. Kept in one place so what is displayed on the code
   // screen is exactly what was sent.
   const phone = composePhone(country, national);
+
+  /**
+   * From the phone screen, ask the server which step this number should see.
+   * A number with a working PIN goes straight to it and no message is sent —
+   * which is the whole saving: an SMS is spent once per account, not once per
+   * sign-in.
+   */
+  async function continueFromPhone(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!phone) {
+      setError('Enter your phone number.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { method } = await apiFetch<{ method: 'pin' | 'otp' }>('/auth/sign-in-method', {
+        method: 'POST',
+        body: { phone },
+      });
+      if (method === 'pin') {
+        setStep('pin');
+        return;
+      }
+      await sendCode();
+    } catch (e: any) {
+      setError(e.message ?? 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Request an SMS code. Separate so "send one anyway" can reuse it. */
+  async function sendCode() {
+    await apiFetch('/auth/otp/request', { method: 'POST', body: { phone } });
+    setStep('code');
+  }
 
   async function requestOtp(e?: React.FormEvent) {
     e?.preventDefault();
@@ -31,8 +75,7 @@ export function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      await apiFetch('/auth/otp/request', { method: 'POST', body: { phone } });
-      setStep('code');
+      await sendCode();
     } catch (e: any) {
       setError(e.message ?? 'Failed to send code.');
     } finally {
@@ -40,15 +83,70 @@ export function LoginForm() {
     }
   }
 
+  async function signInWithPin(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{ accessToken: string; refreshToken: string }>('/auth/pin/login', {
+        method: 'POST',
+        body: { phone, pin, deviceLabel: navigator.userAgent.slice(0, 90) },
+      });
+      await login(res.accessToken, res.refreshToken);
+      router.push('/');
+    } catch (e: any) {
+      setError(e.message ?? 'Incorrect PIN.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function savePin(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (newPin !== confirmPin) {
+      setError('The two PINs do not match.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await apiFetch('/auth/pin', { method: 'POST', token: pending!.accessToken, body: { pin: newPin } });
+      await finishSignIn();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not save your PIN.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function finishSignIn() {
+    if (!pending) return;
+    await login(pending.accessToken, pending.refreshToken);
+    router.push('/');
+  }
+
   async function verifyOtp(e?: React.FormEvent) {
     e?.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<{ accessToken: string; refreshToken: string }>(
-        '/auth/otp/verify',
-        { method: 'POST', body: { phone, code, deviceLabel: navigator.userAgent.slice(0, 90) } },
-      );
+      const res = await apiFetch<{
+        accessToken: string;
+        refreshToken: string;
+        user: { pinSet: boolean };
+      }>('/auth/otp/verify', {
+        method: 'POST',
+        body: { phone, code, deviceLabel: navigator.userAgent.slice(0, 90) },
+      });
+
+      // Offered here and nowhere else, because this is the one moment the user
+      // is certainly paying attention — and the only chance to make their next
+      // sign-in cost nothing.
+      if (!res.user?.pinSet) {
+        setPending({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+        setStep('set-pin');
+        return;
+      }
       await login(res.accessToken, res.refreshToken);
       router.push('/');
     } catch (e: any) {
@@ -63,7 +161,7 @@ export function LoginForm() {
       <h1 style={{ fontSize: 22 }}>Log in</h1>
 
       {step === 'phone' && (
-        <form onSubmit={requestOtp}>
+        <form onSubmit={continueFromPhone}>
           <PhoneInput
             country={country}
             onCountryChange={setCountry}
@@ -78,7 +176,7 @@ export function LoginForm() {
             type="submit"
             disabled={loading || !phone}
           >
-            {loading ? 'Sending…' : 'Send code'}
+            {loading ? 'Please wait…' : 'Continue'}
           </button>
           {/*
             Consent language at the point of opt-in. Required for US A2P 10DLC
@@ -150,6 +248,73 @@ export function LoginForm() {
         </form>
       )}
 
+      {step === 'pin' && (
+        <form onSubmit={signInWithPin}>
+          <p style={{ opacity: 0.7, fontSize: 14 }}>Enter your PIN for {phone}</p>
+          <input
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            placeholder="••••"
+            maxLength={8}
+            inputMode="numeric"
+            type="password"
+            autoFocus
+            style={inputStyle}
+          />
+          <button className="btn" style={{ width: '100%' }} type="submit" disabled={loading || pin.length < 4}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+          {/*
+            The way back for a forgotten PIN. It costs a message, which is
+            exactly why it is a quiet link rather than a second button — but it
+            must always be present, or a forgotten PIN becomes a lost account.
+          */}
+          <button type="button" onClick={requestOtp} disabled={loading} style={linkButtonStyle}>
+            Forgot your PIN? Get a code by SMS
+          </button>
+        </form>
+      )}
+
+      {step === 'set-pin' && (
+        <form onSubmit={savePin}>
+          <h2 style={{ fontSize: 16, marginBottom: 6 }}>Set a PIN</h2>
+          <p style={{ opacity: 0.7, fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+            Choose a PIN and you can sign in with it next time — no waiting for a text. You can
+            change it later from your account, and you can always get a code by SMS instead.
+          </p>
+          <input
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value)}
+            placeholder="New PIN (4–8 digits)"
+            maxLength={8}
+            inputMode="numeric"
+            type="password"
+            autoFocus
+            style={inputStyle}
+          />
+          <input
+            value={confirmPin}
+            onChange={(e) => setConfirmPin(e.target.value)}
+            placeholder="Confirm PIN"
+            maxLength={8}
+            inputMode="numeric"
+            type="password"
+            style={inputStyle}
+          />
+          <button
+            className="btn"
+            style={{ width: '100%' }}
+            type="submit"
+            disabled={loading || newPin.length < 4}
+          >
+            {loading ? 'Saving…' : 'Save PIN & continue'}
+          </button>
+          <button type="button" onClick={finishSignIn} disabled={loading} style={linkButtonStyle}>
+            Skip for now
+          </button>
+        </form>
+      )}
+
       {error && <p style={{ color: '#ff6b6b', marginTop: 12 }}>{error}</p>}
 
       {process.env.NEXT_PUBLIC_ANDROID_APK_URL && (
@@ -210,6 +375,19 @@ export function LoginForm() {
     </div>
   );
 }
+
+/** A button that reads as a link — used for the secondary way out of a step. */
+const linkButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  marginTop: 12,
+  cursor: 'pointer',
+  color: 'inherit',
+  opacity: 0.6,
+  fontSize: 12.5,
+  textDecoration: 'underline',
+};
 
 const inputStyle: React.CSSProperties = {
   display: 'block',

@@ -13,7 +13,14 @@ import { AuthService } from './auth.service';
  */
 /** No master code in play — these tests are about refresh, not sign-in. */
 const noMasterCode = () =>
+  ({ matches: async () => false, recordFailure: async () => undefined, recordUse: async () => undefined }) as any;
+
+/** Nor a development bypass. */
+const noDevBypass = () =>
   ({ matches: async () => false, recordFailure: async () => undefined }) as any;
+
+/** Nor a PIN — these accounts sign in by code. */
+const noPins = () => ({ isAvailableFor: async () => false }) as any;
 
 async function makeService(sessionOverrides: Record<string, any> = {}) {
   const secret = 'verifier-secret';
@@ -54,7 +61,7 @@ async function makeService(sessionOverrides: Record<string, any> = {}) {
 
   const jwt = { signAsync: jest.fn(async () => 'access-token') };
   const config = { get: jest.fn(() => 'secret') };
-  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any, noMasterCode());
+  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any, noMasterCode(), noDevBypass(), noPins());
   return { service, session, secret, lookup, update, updateMany, prisma };
 }
 
@@ -233,6 +240,8 @@ describe('tokens issued before the lookup format existed', () => {
       {} as any,
       {} as any,
       noMasterCode(),
+      noDevBypass(),
+      noPins(),
     );
 
     const out = await service.refresh(legacy);

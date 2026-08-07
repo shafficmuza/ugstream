@@ -87,6 +87,8 @@ async function makeService(
     {} as any,
     { log: jest.fn() } as any,
     masterCode,
+    { matches: async () => false, recordFailure: async () => undefined } as any,
+    { isAvailableFor: async () => false, verify: async () => { throw new Error('no pin'); } } as any,
   );
   return { service, prisma, updateMany, masterCode, recordFailure, recordUse };
 }

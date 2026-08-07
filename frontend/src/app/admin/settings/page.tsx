@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import type { AppSettings } from '@/lib/settings';
 import { labelStyle, inputStyle, uploadFile } from '../shared';
+import { DevBypassPanel } from './dev-bypass-panel';
 
 type FormState = Pick<
   AppSettings,
@@ -601,6 +602,8 @@ export default function AdminSettingsPage() {
       >
         {savingOtpLimits ? 'Saving…' : 'Save OTP limits'}
       </button>
+
+      <DevBypassPanel />
 
       {message && <p style={{ marginTop: 12, opacity: 0.8 }}>{message}</p>}
     </div>

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { useAuth } from '@/lib/auth-context';
+import { PinSection } from './pin-section';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -105,6 +106,8 @@ export default function ProfilePage() {
           {saving ? 'Saving…' : 'Save'}
         </button>
       </form>
+
+      <PinSection pinSet={Boolean(me?.pinSet)} onChanged={refresh} />
     </main>
   );
 }

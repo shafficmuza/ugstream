@@ -7,7 +7,12 @@ import 'package:provider/provider.dart';
 import '../core/auth.dart';
 import '../core/branding.dart';
 
-/// Phone + OTP login. Two steps: enter phone → enter the code.
+/// Sign-in. From the phone number the server says which step to show: a user
+/// who has set a PIN goes straight to it and no message is sent, which is what
+/// keeps an OTP a once-per-account cost rather than once per sign-in.
+/// Which field the sign-in screen is showing.
+enum _Step { phone, code, pin }
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -17,11 +22,14 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _phone = TextEditingController();
   final _code = TextEditingController();
+  final _pin = TextEditingController();
   /// E.164, assembled from the selected country and what was typed.
   String? _fullPhone;
-  bool _codeSent = false;
+  _Step _step = _Step.phone;
   bool _busy = false;
   String? _error;
+
+  bool get _onPhoneStep => _step == _Step.phone;
 
   /// Default the picker to where the handset actually is rather than assuming
   /// Uganda — a subscriber in London should not have to hunt for their own
@@ -48,6 +56,34 @@ class _LoginScreenState extends State<LoginScreen> {
     return m != null ? '+${m.group(1)}${m.group(2)}' : normalised;
   }
 
+  /// From the phone step: ask which way this number signs in, then either show
+  /// the PIN field or send a code.
+  Future<void> _continue() async {
+    final phone = _e164;
+    if (phone == null || phone.length < 8) {
+      setState(() => _error = 'Enter your phone number.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    // Read once, up front: two awaits follow, and reaching back into the
+    // context after either is what the analyzer objects to.
+    final auth = context.read<Auth>();
+    try {
+      final method = await auth.signInMethod(phone);
+      if (method == 'pin') {
+        setState(() => _step = _Step.pin);
+        return;
+      }
+      await auth.requestOtp(phone);
+      setState(() => _step = _Step.code);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Send a code regardless — the way back in when a PIN is forgotten.
   Future<void> _sendCode() async {
     final phone = _e164;
     if (phone == null || phone.length < 8) {
@@ -57,11 +93,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _busy = true; _error = null; });
     try {
       await context.read<Auth>().requestOtp(phone);
-      setState(() => _codeSent = true);
+      setState(() => _step = _Step.code);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -70,8 +106,22 @@ class _LoginScreenState extends State<LoginScreen> {
     if (phone == null) return;
     setState(() { _busy = true; _error = null; });
     try {
+      // On success the gate rebuilds past this screen — including, for a user
+      // with no PIN yet, to the prompt to set one.
       await context.read<Auth>().verifyOtp(phone, _code.text.trim());
-      // _Gate rebuilds to the shell automatically.
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _signInWithPin() async {
+    final phone = _e164;
+    if (phone == null) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      await context.read<Auth>().loginWithPin(phone, _pin.text.trim());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -113,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 28),
                 IntlPhoneField(
                   controller: _phone,
-                  enabled: !_codeSent,
+                  enabled: _onPhoneStep,
                   initialCountryCode: _initialCountry,
                   showCountryFlag: true,
                   // The picker supplies the dialling code, so the number field
@@ -129,12 +179,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   onChanged: (phone) => _fullPhone = phone.completeNumber,
                   onCountryChanged: (_) => _fullPhone = null,
                 ),
-                if (_codeSent) ...[
+                if (_step == _Step.code) ...[
                   const SizedBox(height: 14),
                   TextField(
                     controller: _code,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'Verification code', border: OutlineInputBorder()),
+                  ),
+                ],
+                if (_step == _Step.pin) ...[
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _pin,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Your PIN', border: OutlineInputBorder()),
                   ),
                 ],
                 if (_error != null) ...[
@@ -143,15 +202,34 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
-                  onPressed: _busy ? null : (_codeSent ? _verify : _sendCode),
+                  onPressed: _busy
+                      ? null
+                      : switch (_step) {
+                          _Step.phone => _continue,
+                          _Step.code => _verify,
+                          _Step.pin => _signInWithPin,
+                        },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Text(_busy ? 'Please wait…' : (_codeSent ? 'Verify & sign in' : 'Send code')),
+                    child: Text(_busy
+                        ? 'Please wait…'
+                        : switch (_step) {
+                            _Step.phone => 'Continue',
+                            _Step.code => 'Verify & sign in',
+                            _Step.pin => 'Sign in',
+                          }),
                   ),
                 ),
-                if (_codeSent)
+                if (_step == _Step.pin)
+                  // A forgotten PIN must never be a lost account. It costs a
+                  // message, which is why it is a quiet link and not a button.
                   TextButton(
-                    onPressed: _busy ? null : () => setState(() => _codeSent = false),
+                    onPressed: _busy ? null : _sendCode,
+                    child: const Text('Forgot your PIN? Get a code by SMS'),
+                  ),
+                if (_step != _Step.phone)
+                  TextButton(
+                    onPressed: _busy ? null : () => setState(() => _step = _Step.phone),
                     child: const Text('Change number'),
                   )
                 else
@@ -169,7 +247,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             }
                             setState(() {
                               _error = null;
-                              _codeSent = true;
+                              _step = _Step.code;
                             });
                           },
                     child: const Text('I already have a code'),

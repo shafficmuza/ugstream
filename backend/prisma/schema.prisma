@@ -71,6 +71,24 @@ model AppSettings {
   // wholesale password sharing or punish normal use.
   maxSessions       Int      @default(3) @map("max_sessions")
   maxStreams        Int      @default(2) @map("max_streams")
+  // Development sign-in bypass: a fixed code that stands in for the SMS one on
+  // a named handful of numbers, so the team can sign in while building without
+  // paying for or waiting on a message.
+  //
+  // Off unless deliberately switched on, and scoped to devBypassPhones rather
+  // than to a role — "every admin" is a set that grows by accident, and this
+  // code is worth every account it opens.
+  //
+  // devBypassFailures exists because these codes are short by design. Four
+  // digits is 10,000 guesses, which at the endpoint's throttle is under a
+  // minute of scripted traffic; the counter disables the bypass long before a
+  // search gets anywhere. It resets on every successful use, so ordinary
+  // typing never walks it up to the limit.
+  devBypassEnabled  Boolean  @default(false) @map("dev_bypass_enabled")
+  devBypassCodeHash String?  @map("dev_bypass_code_hash")
+  devBypassPhones   String[] @default([]) @map("dev_bypass_phones")
+  devBypassFailures Int      @default(0) @map("dev_bypass_failures")
+  devBypassSetAt    DateTime? @map("dev_bypass_set_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
@@ -171,6 +189,18 @@ model User {
   role         UserRole  @default(user)
   status       UserStatus @default(active)
   createdAt    DateTime  @default(now()) @map("created_at")
+  // Optional sign-in PIN, set by the user after their first verified sign-in.
+  // Once set, returning sign-ins cost nothing: no SMS is sent at all. The OTP
+  // path stays available as the way back in when the PIN is forgotten or
+  // locked, so a PIN is a shortcut, never the only key to the account.
+  //
+  // A four-digit PIN is only ten thousand guesses, so pinFailures/pinLockedUntil
+  // are not optional extras — they are what makes this safe to offer at all.
+  // Both reset on a correct PIN, so ordinary fumbling never accumulates.
+  pinHash        String?   @map("pin_hash")
+  pinSetAt       DateTime? @map("pin_set_at")
+  pinFailures    Int       @default(0) @map("pin_failures")
+  pinLockedUntil DateTime? @map("pin_locked_until")
 
   sessions      Session[]
   payments      Payment[]

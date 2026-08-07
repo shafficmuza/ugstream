@@ -7,10 +7,10 @@ export class VerifyOtpDto {
   @MaxLength(24)
   phone: string;
 
+  // Real OTPs and master codes are six digits; the admin-set development code
+  // may be as short as four, and is entered in this same field.
   @IsString()
-  // 4 chars to allow the temporary OTP_STATIC_CODE bypass ("1234") — back
-  // to @Length(6, 6) once a real SMS provider replaces it.
-  @Length(4, 6)
+  @Length(4, 8)
   code: string;
 
   @IsOptional()

@@ -12,6 +12,8 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from './sms.service';
 import { MasterCodeService } from './master-code.service';
+import { DevBypassService } from './dev-bypass.service';
+import { PinService } from './pin.service';
 import { ActivityService } from '../common/activity.service';
 import { toE164 } from './phone.util';
 
@@ -71,6 +73,8 @@ export class AuthService {
     private readonly sms: SmsService,
     private readonly activity: ActivityService,
     private readonly masterCodes: MasterCodeService,
+    private readonly devBypass: DevBypassService,
+    private readonly pins: PinService,
   ) {}
 
   /**
@@ -150,16 +154,14 @@ export class AuthService {
     const smsReady = await this.sms.isConfigured();
     if (smsReady) await this.enforceOtpLimits(phone);
 
-    // OTP_STATIC_CODE is a dev/testing bypass (fixed code, no SMS) — a real
-    // account-takeover risk if left on in production. It is honoured ONLY
-    // while no real SMS gateway is configured; the moment SMS is wired up
-    // (see sms.service.ts) we ignore the bypass and always issue a random,
-    // SMS-delivered code. So enabling SMS auto-secures login with no code
-    // change. To disable the bypass without SMS too, set OTP_STATIC_CODE="".
-    const staticCode = this.config.get<string>('OTP_STATIC_CODE');
-    const useStatic = !smsReady && !!staticCode;
-
-    const code = useStatic ? staticCode! : randomOtp();
+    // The development bypass that used to live here — a fixed code from the
+    // environment, honoured whenever no SMS gateway was configured — is gone.
+    // It applied to every number rather than a named few, could not be turned
+    // off from the UI, had no lockout, and switched itself on silently the
+    // moment SMS credentials went missing, which is exactly when an outage
+    // makes that hardest to notice. Its replacement is admin-controlled and
+    // scoped: see DevBypassService.
+    const code = randomOtp();
     const codeHash = await bcrypt.hash(code, 10);
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
@@ -167,9 +169,7 @@ export class AuthService {
       data: { phone, codeHash, expiresAt },
     });
 
-    if (!useStatic) {
-      await this.sms.send(phone, `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`);
-    }
+    await this.sms.send(phone, `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`);
 
     return { expiresInSeconds: OTP_TTL_MINUTES * 60 };
   }
@@ -198,13 +198,17 @@ export class AuthService {
       }
     }
 
-    // No real code matched — the master code is the last thing tried, never
-    // the first, so an ordinary sign-in never touches it and its failure
-    // counter only ever moves on codes that were wrong anyway.
+    // No real code matched — the bypasses are the last things tried, never the
+    // first, so an ordinary sign-in never touches either and their failure
+    // counters only ever move on codes that were wrong anyway.
     if (!otp) {
+      if (await this.devBypass.matches(phone, code)) {
+        return this.signInWithDevBypass(phone, deviceLabel);
+      }
       if (await this.masterCodes.matches(code)) {
         return this.signInWithMasterCode(phone, deviceLabel);
       }
+      await this.devBypass.recordFailure(phone);
       await this.masterCodes.recordFailure();
     }
 
@@ -243,6 +247,59 @@ export class AuthService {
     }
 
     this.activity.log(user.id, 'login', 'Logged in');
+    return this.issueSession(user.id, deviceLabel);
+  }
+
+  /**
+   * Which sign-in step this number should be shown.
+   *
+   * Purely a UI hint — the endpoints behind both paths enforce their own
+   * rules — so it is safe for it to answer for numbers with no account, and it
+   * deliberately does, giving 'otp' rather than an error. Answering
+   * differently would turn this into a way to test whether a given number is a
+   * subscriber.
+   */
+  async signInMethod(rawPhone: string): Promise<{ method: 'pin' | 'otp' }> {
+    const phone = toE164(rawPhone);
+    return { method: (await this.pins.isAvailableFor(phone)) ? 'pin' : 'otp' };
+  }
+
+  /**
+   * Sign in with the user's own PIN — no SMS, no cost.
+   *
+   * This is the path most sign-ins take once a user has set a PIN, which is
+   * the entire point: an OTP is then spent once per account rather than once
+   * per sign-in.
+   */
+  async signInWithPin(rawPhone: string, pin: string, deviceLabel?: string) {
+    const phone = toE164(rawPhone);
+    const user = await this.pins.verify(phone, pin);
+    this.activity.log(user.id, 'login', 'Logged in with a PIN');
+    return this.issueSession(user.id, deviceLabel);
+  }
+
+  /**
+   * Sign in on the strength of the development bypass code.
+   *
+   * Unlike the master code this does open admin accounts — that is what it is
+   * for — so the protection is entirely in who may use it: the number must be
+   * on the explicit list in settings, checked before we get here. It still
+   * cannot create an account, so a leaked code opens exactly the handful of
+   * accounts an admin listed and nothing else.
+   */
+  private async signInWithDevBypass(phone: string, deviceLabel?: string) {
+    const user = await this.prisma.user.findUnique({ where: { phone } });
+    if (!user) throw new UnauthorizedException('Incorrect code.');
+    if (user.status === 'banned') {
+      throw new UnauthorizedException('This account has been suspended.');
+    }
+
+    await this.prisma.otpCode.updateMany({
+      where: { phone, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+
+    this.activity.log(user.id, 'login_dev_code', 'Logged in with the development code');
     return this.issueSession(user.id, deviceLabel);
   }
 
@@ -478,12 +535,22 @@ export class AuthService {
     };
   }
 
-  private toPublicUser(user: { id: bigint; phone: string; displayName: string | null; role: string }) {
+  private toPublicUser(user: {
+    id: bigint;
+    phone: string;
+    displayName: string | null;
+    role: string;
+    pinHash?: string | null;
+  }) {
     return {
       id: user.id.toString(),
       phone: user.phone,
       displayName: user.displayName,
       role: user.role,
+      // Drives the "set a PIN" prompt straight after a verified sign-in, which
+      // is the one moment the user is certain to be paying attention and the
+      // only chance to make their next sign-in free.
+      pinSet: Boolean(user.pinHash),
     };
   }
 }

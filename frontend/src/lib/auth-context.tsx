@@ -11,6 +11,8 @@ interface Me {
   email: string | null;
   address: string | null;
   role: string;
+  /** Whether a sign-in PIN is set. Never the PIN itself. */
+  pinSet?: boolean;
 }
 
 interface AuthState {

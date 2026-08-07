@@ -42,6 +42,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Set or change the PIN. Changing asks for the current one, so a phone left
+  /// unattended for a moment cannot be used to lock its owner out.
+  Future<void> _editPin(BuildContext context, {required bool hasPin}) async {
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final confirm = TextEditingController();
+    String? error;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(hasPin ? 'Change your PIN' : 'Set a PIN'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasPin)
+                TextField(
+                  controller: current,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Current PIN'),
+                ),
+              TextField(
+                controller: next,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'New PIN (4–8 digits)'),
+              ),
+              TextField(
+                controller: confirm,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Confirm new PIN'),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (next.text.trim() != confirm.text.trim()) {
+                  setDialogState(() => error = 'The two PINs do not match.');
+                  return;
+                }
+                try {
+                  await context.read<Auth>().setPin(
+                        next.text.trim(),
+                        currentPin: hasPin ? current.text.trim() : null,
+                      );
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                } catch (e) {
+                  setDialogState(() => error = e.toString());
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removePin(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove your PIN?'),
+        content: const Text(
+            'You will go back to receiving a code by SMS each time you sign in.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) await context.read<Auth>().clearPin();
+  }
+
   @override
   Widget build(BuildContext context) {
     final u = context.watch<Auth>().user;
@@ -66,6 +156,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 16),
           FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
           const Divider(height: 40),
+          // The PIN is what keeps a returning sign-in free, so changing and
+          // removing it both live in plain sight rather than buried.
+          ListTile(
+            leading: Icon(u?.pinSet == true ? Icons.pin : Icons.pin_outlined),
+            title: Text(u?.pinSet == true ? 'Change sign-in PIN' : 'Set a sign-in PIN'),
+            subtitle: Text(
+              u?.pinSet == true
+                  ? 'You sign in with your PIN instead of waiting for a text.'
+                  : 'Sign in without waiting for a text message.',
+              style: const TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _editPin(context, hasPin: u?.pinSet == true),
+          ),
+          if (u?.pinSet == true)
+            ListTile(
+              leading: const Icon(Icons.lock_open, color: Colors.orangeAccent),
+              title: const Text('Remove PIN'),
+              subtitle: const Text('Go back to a code by SMS each time you sign in.',
+                  style: TextStyle(fontSize: 12, color: Colors.white54)),
+              onTap: () => _removePin(context),
+            ),
           ListTile(
             leading: const Icon(Icons.card_membership),
             title: const Text('Subscribe / manage plan'),

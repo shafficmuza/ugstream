@@ -4,6 +4,7 @@ import 'core/auth.dart';
 import 'core/branding.dart';
 import 'core/config.dart';
 import 'screens/login_screen.dart';
+import 'screens/set_pin_screen.dart';
 import 'screens/shell.dart';
 import 'screens/title_screen.dart';
 
@@ -79,6 +80,9 @@ class _GateState extends State<_Gate> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: kAccent)));
     }
     if (!auth.isLoggedIn) return const LoginScreen();
+    // Signed in, but no PIN yet — the one moment they are certainly paying
+    // attention, and the only chance to make the next sign-in cost nothing.
+    if (auth.promptForPin) return const SetPinScreen();
 
     if (!_wired) {
       _wired = true;

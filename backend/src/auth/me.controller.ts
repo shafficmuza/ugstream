@@ -37,6 +37,7 @@ export class MeController {
     email: string | null;
     address: string | null;
     role: string;
+    pinHash?: string | null;
   }) {
     return {
       id: user.id.toString(),
@@ -45,6 +46,9 @@ export class MeController {
       email: user.email,
       address: user.address,
       role: user.role,
+      // Never the PIN itself — only whether one exists, so the account screen
+      // can offer "set" or "change" without the hash ever leaving the server.
+      pinSet: Boolean(user.pinHash),
     };
   }
 }

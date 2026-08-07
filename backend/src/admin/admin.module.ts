@@ -3,6 +3,7 @@ import { AdminUsersController } from './admin-users.controller';
 import { AdminStatsController } from './admin-stats.controller';
 import { AdminActivityController } from './admin-activity.controller';
 import { AdminMasterCodeController } from './admin-master-code.controller';
+import { AdminDevBypassController } from './admin-dev-bypass.controller';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -12,6 +13,7 @@ import { AuthModule } from '../auth/auth.module';
     AdminStatsController,
     AdminActivityController,
     AdminMasterCodeController,
+    AdminDevBypassController,
   ],
 })
 export class AdminModule {}

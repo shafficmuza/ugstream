@@ -9,7 +9,14 @@ import { AuthService } from './auth.service';
  */
 /** No master code in play — these tests are about the ordinary OTP path. */
 const noMasterCode = () =>
+  ({ matches: async () => false, recordFailure: async () => undefined, recordUse: async () => undefined }) as any;
+
+/** Nor a development bypass. */
+const noDevBypass = () =>
   ({ matches: async () => false, recordFailure: async () => undefined }) as any;
+
+/** Nor a PIN — these accounts sign in by code. */
+const noPins = () => ({ isAvailableFor: async () => false }) as any;
 
 function makeService(opts: {
   cooldown?: number;
@@ -61,6 +68,8 @@ function makeService(opts: {
     sms as any,
     activity as any,
     noMasterCode(),
+    noDevBypass(),
+    noPins(),
   );
   return { service, sms, create, count, findFirst };
 }

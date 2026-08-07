@@ -3,13 +3,25 @@ import '../core/config.dart';
 // Data models mirroring the ham/ugstream API responses.
 
 class User {
-  User({required this.id, required this.phone, this.displayName, this.email, this.address, required this.role});
+  User({
+    required this.id,
+    required this.phone,
+    this.displayName,
+    this.email,
+    this.address,
+    required this.role,
+    this.pinSet = false,
+  });
   final String id;
   final String phone;
   final String? displayName;
   final String? email;
   final String? address;
   final String role;
+
+  /// Whether a sign-in PIN is set. Never the PIN itself — the server only ever
+  /// reports that one exists.
+  final bool pinSet;
 
   factory User.fromJson(Map<String, dynamic> j) => User(
         id: j['id'].toString(),
@@ -18,6 +30,7 @@ class User {
         email: j['email'],
         address: j['address'],
         role: j['role'] ?? 'user',
+        pinSet: j['pinSet'] == true,
       );
 }
 
