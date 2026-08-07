@@ -153,6 +153,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextButton(
                     onPressed: _busy ? null : () => setState(() => _codeSent = false),
                     child: const Text('Change number'),
+                  )
+                else
+                  // For someone who already holds a code — read out by support,
+                  // or an SMS that arrived after the app was reopened. Without
+                  // this the only way to the entry field is a fresh request,
+                  // which the cooldown can refuse.
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            if (_e164 == null) {
+                              setState(() => _error = 'Enter your phone number first.');
+                              return;
+                            }
+                            setState(() {
+                              _error = null;
+                              _codeSent = true;
+                            });
+                          },
+                    child: const Text('I already have a code'),
                   ),
                 const SizedBox(height: 8),
                 Text(context.watch<Branding>().appName,

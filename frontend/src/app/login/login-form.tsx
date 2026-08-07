@@ -86,6 +86,37 @@ export function LoginForm() {
             what will be sent and link to both policies, and reviewers check
             this screen specifically.
           */}
+          {/*
+            Someone who already holds a code needs a way past this screen
+            without requesting another: a code read out by support, or an SMS
+            that arrived after the page was reloaded. Without this the only
+            route to the entry field is a fresh request, which the cooldown
+            can refuse.
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!phone) {
+                setError('Enter your phone number first.');
+                return;
+              }
+              setError(null);
+              setStep('code');
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              marginTop: 12,
+              cursor: 'pointer',
+              color: 'inherit',
+              opacity: 0.6,
+              fontSize: 12.5,
+              textDecoration: 'underline',
+            }}
+          >
+            I already have a code
+          </button>
           <p style={{ opacity: 0.5, fontSize: 11.5, marginTop: 14, lineHeight: 1.5 }}>
             By continuing you agree to receive a one-time sign-in code by SMS. Message and data
             rates may apply. Reply STOP to opt out or HELP for help. See our{' '}

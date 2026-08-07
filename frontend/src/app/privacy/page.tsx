@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <LegalPage title="Privacy Policy" updated="7 August 2026">
       <P>
         This policy explains what {OPERATOR.brand} (&ldquo;we&rdquo;, &ldquo;us&rdquo;), operated by{' '}
-        {OPERATOR.company} of {OPERATOR.city}, collects about you, why, and what we do with it. It
+        {OPERATOR.company} of {OPERATOR.cityState}, collects about you, why, and what we do with it. It
         applies to our website at {OPERATOR.site} and to our Android and iOS apps.
       </P>
 
@@ -169,7 +169,11 @@ export default function PrivacyPage() {
       <P>
         {OPERATOR.company}
         <br />
-        {OPERATOR.city}
+        {OPERATOR.addressLine}
+        <br />
+        {OPERATOR.cityState}
+        <br />
+        {OPERATOR.country}
         <br />
         Email: <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a>
         <br />

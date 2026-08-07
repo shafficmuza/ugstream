@@ -196,6 +196,12 @@ model OtpCode {
   expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
   attempts   Int       @default(0) @db.SmallInt
+  // Set when an admin issued this code by hand for a user who cannot receive
+  // SMS. Such codes send no message and cost nothing, so they are excluded
+  // from the per-number rate limits — those exist to cap spend, and counting
+  // a free code against them would leave the user unable to reach the screen
+  // where the code is entered. Also the audit trail: who issued it.
+  issuedByAdminId BigInt? @map("issued_by_admin_id")
 
   @@index([phone, expiresAt])
   @@index([phone, createdAt])

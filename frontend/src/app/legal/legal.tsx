@@ -78,9 +78,14 @@ export function Callout({ children }: { children: ReactNode }) {
  */
 export const OPERATOR = {
   brand: 'Muza Watch',
-  company: 'Pro Systems UG',
+  // Must match the legal entity on the Twilio brand record exactly — a
+  // mismatch between the name here and the one registered is a routine
+  // rejection during A2P vetting.
+  company: 'Pro Media Systems LLC',
   site: 'https://ham.sentepos.com',
   email: 'sales@prosystemsug.com',
   phone: '+1 224 373 0803',
-  city: 'Kampala, Uganda',
+  addressLine: '451 Verde Dr',
+  cityState: 'Schaumburg, IL',
+  country: 'United States',
 };

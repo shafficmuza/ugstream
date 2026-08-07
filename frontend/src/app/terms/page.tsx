@@ -11,7 +11,7 @@ export default function TermsPage() {
     <LegalPage title="Terms and Conditions" updated="7 August 2026">
       <P>
         These terms govern your use of {OPERATOR.brand}, a subscription video streaming service
-        operated by {OPERATOR.company} of {OPERATOR.city}. By creating an account you agree to them.
+        operated by {OPERATOR.company} of {OPERATOR.cityState}. By creating an account you agree to them.
       </P>
 
       <H2>SMS messaging terms</H2>
@@ -135,15 +135,19 @@ export default function TermsPage() {
 
       <H2>Governing law</H2>
       <P>
-        These terms are governed by the laws of the Republic of Uganda, and the courts of Uganda
-        have jurisdiction over any dispute.
+        These terms are governed by the laws of the State of Illinois, United States, and the courts
+        located in Cook County, Illinois have jurisdiction over any dispute.
       </P>
 
       <H2>Contact us</H2>
       <P>
         {OPERATOR.company}
         <br />
-        {OPERATOR.city}
+        {OPERATOR.addressLine}
+        <br />
+        {OPERATOR.cityState}
+        <br />
+        {OPERATOR.country}
         <br />
         Email: <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a>
         <br />

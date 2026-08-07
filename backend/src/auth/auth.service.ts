@@ -97,9 +97,15 @@ export class AuthService {
       );
     };
 
+    // Admin-issued codes send no SMS and cost nothing, so they are excluded
+    // throughout: these caps exist to bound spend, and letting a free code
+    // trip the cooldown would strand the very user support just helped —
+    // reaching the code-entry screen requires requesting one.
+    const chargeable = { phone, issuedByAdminId: null };
+
     if (cooldown > 0) {
       const last = await this.prisma.otpCode.findFirst({
-        where: { phone },
+        where: chargeable,
         orderBy: { id: 'desc' },
         select: { createdAt: true },
       });
@@ -116,7 +122,7 @@ export class AuthService {
     // how long a code stays valid.
     if (perHour > 0) {
       const count = await this.prisma.otpCode.count({
-        where: { phone, createdAt: { gt: new Date(now - 60 * 60 * 1000) } },
+        where: { ...chargeable, createdAt: { gt: new Date(now - 60 * 60 * 1000) } },
       });
       if (count >= perHour) {
         tooMany('Too many codes requested for this number. Try again in an hour.', 3600);
@@ -125,7 +131,7 @@ export class AuthService {
 
     if (perDay > 0) {
       const count = await this.prisma.otpCode.count({
-        where: { phone, createdAt: { gt: new Date(now - 24 * 60 * 60 * 1000) } },
+        where: { ...chargeable, createdAt: { gt: new Date(now - 24 * 60 * 60 * 1000) } },
       });
       if (count >= perDay) {
         tooMany('Daily limit reached for this number. Try again tomorrow or contact support.', 86400);
@@ -168,29 +174,50 @@ export class AuthService {
 
   async verifyOtp(rawPhone: string, code: string, deviceLabel?: string) {
     const phone = toE164(rawPhone);
-    const otp = await this.prisma.otpCode.findFirst({
+
+    // Every live code for this number is a candidate, not just the newest.
+    // Matching only the latest breaks two real cases: a user who requests a
+    // second code and then types the first one to arrive, and an admin-issued
+    // recovery code that the user's own "Send code" press would otherwise
+    // shadow — the sign-in screen requires that press to reach this step, so
+    // the recovery code would never be reachable.
+    const candidates = await this.prisma.otpCode.findMany({
       where: { phone, consumedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { id: 'desc' },
     });
 
-    if (!otp) {
+    if (candidates.length === 0) {
       throw new UnauthorizedException('Code expired or not found. Request a new one.');
     }
-    if (otp.attempts >= OTP_MAX_ATTEMPTS) {
+
+    const live = candidates.filter((c) => c.attempts < OTP_MAX_ATTEMPTS);
+    if (live.length === 0) {
       throw new UnauthorizedException('Too many incorrect attempts. Request a new code.');
     }
 
-    const valid = await bcrypt.compare(code, otp.codeHash);
-    if (!valid) {
-      await this.prisma.otpCode.update({
-        where: { id: otp.id },
+    let otp: (typeof live)[number] | undefined;
+    for (const candidate of live) {
+      if (await bcrypt.compare(code, candidate.codeHash)) {
+        otp = candidate;
+        break;
+      }
+    }
+
+    if (!otp) {
+      // Charge the attempt against every live code, so several outstanding
+      // codes cannot multiply the number of guesses available.
+      await this.prisma.otpCode.updateMany({
+        where: { id: { in: live.map((c) => c.id) } },
         data: { attempts: { increment: 1 } },
       });
       throw new UnauthorizedException('Incorrect code.');
     }
 
-    await this.prisma.otpCode.update({
-      where: { id: otp.id },
+    // Consume every outstanding code for this number, not only the one that
+    // matched: once a sign-in succeeds, no other code should still open the
+    // account.
+    await this.prisma.otpCode.updateMany({
+      where: { phone, consumedAt: null },
       data: { consumedAt: new Date() },
     });
 
