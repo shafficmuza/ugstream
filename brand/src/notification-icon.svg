@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
-  <g transform="translate(48,48) scale(0.135) translate(-256,-256)">
-    <path d="M112 382 L112 140 L256 292 L400 140 L400 382" fill="none" stroke="#fff"
-          stroke-width="62" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- One flat white silhouette: Android tints notification icons, so a
+       two-colour mark renders as a solid grey blob. -->
+  <g transform="translate(48,48) scale(0.2519) translate(-256,-256)">
+    <path d="M121.0 121.0 L155.0 121.0 L242.0 225.0 L242.0 277.9 L155.0 174.0 L155.0 391.0 L121.0 391.0 Z" fill="#FFFFFF"/>
+    <path d="M253.0 121.0 L253.0 391.0 L391.0 256.0 Z" fill="#FFFFFF"/>
   </g>
 </svg>

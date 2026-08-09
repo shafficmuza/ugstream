@@ -1,19 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500" width="1024" height="500">
   <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242424"/><stop offset="1" stop-color="#0B0B0B"/></linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.28" r="0.75">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#E50914" stop-opacity="0"/></radialGradient>
+  
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#1A1A1A"/><stop offset="1" stop-color="#050505"/></linearGradient>
-    <radialGradient id="glow" cx="0.18" cy="0.5" r="0.62">
-      <stop offset="0" stop-color="#E50914" stop-opacity="0.34"/>
+    <radialGradient id="wash" cx="0.18" cy="0.5" r="0.62">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.30"/>
       <stop offset="1" stop-color="#E50914" stop-opacity="0"/></radialGradient>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F6121D"/><stop offset="1" stop-color="#B0060F"/></linearGradient>
   </defs>
   <rect width="1024" height="500" fill="url(#bg)"/>
-  <rect width="1024" height="500" fill="url(#glow)"/>
+  <rect width="1024" height="500" fill="url(#wash)"/>
   <rect x="72" y="150" width="200" height="200" rx="46" fill="url(#tile)"/>
-  <g transform="translate(172,250) scale(0.34) translate(-256,-256)">
-    <path d="M112 382 L112 140 L256 292 L400 140 L400 382" fill="none" stroke="#fff"
-          stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="72" y="150" width="200" height="200" rx="46" fill="url(#glow)"/>
+  <g transform="translate(172.0,250.0) scale(0.3906) translate(-256,-256)">
+    <path d="M121.0 121.0 L155.0 121.0 L242.0 225.0 L242.0 277.9 L155.0 174.0 L155.0 391.0 L121.0 391.0 Z" fill="#FFFFFF"/>
+    <path d="M253.0 121.0 L253.0 391.0 L391.0 256.0 Z" fill="#E50914"/>
   </g>
   <text x="322" y="238" font-family="DejaVu Sans" font-weight="bold" font-size="76" letter-spacing="1">
     <tspan fill="#FFFFFF">MUZA</tspan><tspan fill="#E50914" dx="24">WATCH</tspan>

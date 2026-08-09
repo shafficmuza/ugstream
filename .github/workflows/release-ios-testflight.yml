@@ -58,6 +58,10 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
+          # Generate the app icon from brand sources rather than trusting
+          # whatever is committed under ios/ — this is what stops a build
+          # going to TestFlight wearing the default Flutter logo.
+          dart run flutter_launcher_icons
           # Apple rejects re-uploads with a duplicate build number, so use
           # the CI run number (monotonic) as CFBundleVersion.
           flutter build ios --release --no-codesign \

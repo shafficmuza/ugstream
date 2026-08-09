@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432" width="432" height="432">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#F6121D"/><stop offset="1" stop-color="#B0060F"/></linearGradient></defs>
-  <rect width="432" height="432" fill="url(#g)"/>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242424"/><stop offset="1" stop-color="#0B0B0B"/></linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.28" r="0.75">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#E50914" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="432" height="432" fill="url(#tile)"/>
+  <rect width="432" height="432" fill="url(#glow)"/>
 </svg>

@@ -1,10 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 220" width="980" height="220">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#F6121D"/><stop offset="1" stop-color="#B0060F"/></linearGradient></defs>
-  <rect x="20" y="20" width="180" height="180" rx="40" fill="url(#g)"/>
-  <g transform="translate(110,110) scale(0.305) translate(-256,-256)">
-    <path d="M112 382 L112 140 L256 292 L400 140 L400 382" fill="none" stroke="#fff"
-          stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242424"/><stop offset="1" stop-color="#0B0B0B"/></linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.28" r="0.75">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#E50914" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="20" y="20" width="180" height="180" rx="40" fill="url(#tile)"/>
+  <rect x="20" y="20" width="180" height="180" rx="40" fill="url(#glow)"/>
+  <g transform="translate(110.0,110.0) scale(0.3516) translate(-256,-256)">
+    <path d="M121.0 121.0 L155.0 121.0 L242.0 225.0 L242.0 277.9 L155.0 174.0 L155.0 391.0 L121.0 391.0 Z" fill="#FFFFFF"/>
+    <path d="M253.0 121.0 L253.0 391.0 L391.0 256.0 Z" fill="#E50914"/>
   </g>
   <text x="240" y="126" font-family="DejaVu Sans" font-weight="bold" font-size="82" letter-spacing="1">
     <tspan fill="#FFFFFF" class="wm-name">MUZA</tspan><tspan fill="#E50914" dx="26">WATCH</tspan>
