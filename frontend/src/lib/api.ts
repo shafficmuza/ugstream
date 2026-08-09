@@ -33,11 +33,25 @@ export async function apiFetch<T>(
 
   let res = await send(opts.token);
 
-  // Expired access token → refresh once and retry (only when we actually have
-  // a refresh token, i.e. an authenticated client-side call).
-  if (res.status === 401 && opts.token && typeof window !== 'undefined' && getRefreshToken()) {
+  // Expired access token → refresh once and retry. Attempted even with no
+  // refresh token in localStorage: the httpOnly cookie copy may still hold
+  // the session (Safari purges localStorage after 7 idle days; the cookie
+  // survives).
+  if (res.status === 401 && opts.token && typeof window !== 'undefined') {
     const fresh = await refreshAccessToken();
-    if (fresh) res = await send(fresh);
+    if (fresh) {
+      res = await send(fresh);
+    } else if (getRefreshToken()) {
+      // The refresh could not COMPLETE (deploy in progress, bad signal) but
+      // the session was not refused — the stored token survived. Surfacing
+      // the original 401 here would bounce the user to the login screen and
+      // read as "the app signed me out"; report it as the outage it is.
+      const transient: ApiError = {
+        statusCode: 503,
+        message: 'Connection problem — please try again in a moment.',
+      };
+      throw transient;
+    }
   }
 
   const json = await res.json().catch(() => undefined);

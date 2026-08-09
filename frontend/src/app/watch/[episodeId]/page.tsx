@@ -25,10 +25,6 @@ export default function WatchPage() {
   const router = useRouter();
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Distinguished from a generic error so the user gets a retry button: the
-  // condition clears by itself once another device stops, and sending them
-  // back to the title page to start over is needless friction.
-  const [streamLimit, setStreamLimit] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,7 +35,6 @@ export default function WatchPage() {
       return;
     }
     setError(null);
-    setStreamLimit(false);
     apiFetch<PlaybackInfo>(`/episodes/${params.episodeId}/play`, { method: 'POST', token })
       .then((pb) =>
         setPlayback(resumeAtOverride == null ? pb : { ...pb, resumeAt: resumeAtOverride }),
@@ -51,9 +46,8 @@ export default function WatchPage() {
         } else if (err.statusCode === 401) {
           router.replace('/login');
         } else {
-          // 409 is the concurrent-stream cap: the account is entitled, it is
-          // just already watching elsewhere.
-          if (err.statusCode === 409) setStreamLimit(true);
+          // 409 (stream cap) and 503 (transient outage) both clear on their
+          // own — every error path gets a retry button rather than a dead end.
           setError(err.message ?? 'Could not start playback.');
         }
       });
@@ -142,11 +136,9 @@ export default function WatchPage() {
           {error ? (
             <>
               <p style={{ color: '#ff6b6b', marginBottom: 16 }}>{error}</p>
-              {streamLimit && (
-                <button className="btn" style={{ marginRight: 8 }} onClick={() => startPlayback()}>
-                  Try again
-                </button>
-              )}
+              <button className="btn" style={{ marginRight: 8 }} onClick={() => startPlayback()}>
+                Try again
+              </button>
               <button className="btn" onClick={goBack}>
                 Go back
               </button>

@@ -30,10 +30,12 @@ const ACCESS_TOKEN_TTL = '15m';
  * How long a just-rotated refresh token keeps working. Covers the window in
  * which a client can be interrupted between the server rotating and the client
  * persisting — an app suspended or killed by iOS mid-request, a dropped
- * response, a crash. Long enough to survive an app that is not reopened until
- * the next day; short enough that a replayed token is not useful indefinitely.
+ * response, a crash. A device parked for days (a TV browser, a laptop shut
+ * mid-refresh and reopened after a trip) must come back signed in — the
+ * product bar is Netflix's "log in once, stay in for months" — so the window
+ * is a week, not a day; a replayed token still cannot outlive it.
  */
-const REFRESH_GRACE_MS = 24 * 60 * 60 * 1000;
+const REFRESH_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function randomOtp(): string {
   // 6-digit numeric code, zero-padded.

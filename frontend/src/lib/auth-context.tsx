@@ -1,8 +1,14 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { apiFetch } from './api';
-import { getAccessToken, clearTokens as clearStoredTokens, setTokens as storeTokens } from './auth';
+import { apiFetch, ApiError } from './api';
+import {
+  getAccessToken,
+  getRefreshToken,
+  refreshAccessToken,
+  clearTokens as clearStoredTokens,
+  setTokens as storeTokens,
+} from './auth';
 
 interface Me {
   id: string;
@@ -29,18 +35,37 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
+  const refresh = useCallback(async function attemptLoad(attempt = 0): Promise<void> {
+    let token = getAccessToken();
     if (!token) {
-      setMe(null);
-      return;
+      // Nothing in localStorage — but the session may still live in the
+      // httpOnly cookie (Safari purges script storage after 7 idle days).
+      // Recover it silently rather than showing the login screen.
+      token = await refreshAccessToken();
+      if (!token) {
+        setMe(null);
+        return;
+      }
     }
     try {
       setMe(await apiFetch<Me>('/me', { token }));
-    } catch {
-      // Token expired/invalid — clear it so the header doesn't keep
-      // claiming the user is logged in.
-      clearStoredTokens();
+    } catch (e) {
+      const err = e as ApiError;
+      // End the session ONLY when the server definitively refused it (the
+      // 401 survived a refresh attempt and the refresh token is gone). A
+      // deploy 502, backend warm-up, or bad signal must never destroy a
+      // month-old session — that is exactly the "why am I logged out again"
+      // Netflix never inflicts.
+      if (err.statusCode === 401 && !getRefreshToken()) {
+        clearStoredTokens();
+        setMe(null);
+        return;
+      }
+      if (attempt < 2) {
+        setTimeout(() => void attemptLoad(attempt + 1), 5000);
+        return; // stay in "checking" rather than flashing a logged-out header
+      }
+      // Give up for this visit — tokens stay put, the next visit recovers.
       setMe(null);
     }
   }, []);

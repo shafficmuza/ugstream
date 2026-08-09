@@ -185,11 +185,22 @@ describe('refresh with a token the client failed to replace', () => {
 });
 
 describe('refresh with a token that should no longer work', () => {
+  it('still accepts a token rotated days ago — a device parked for a week comes back signed in', async () => {
+    const stale = 'previous-secret';
+    const { service, lookup, updateMany } = await makeService({
+      prevRefreshHash: await bcrypt.hash(stale, 4),
+      prevRefreshAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // five days ago
+    });
+    const out = await service.refresh(`${lookup}.${stale}`);
+    expect(out.accessToken).toBeTruthy();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects and revokes once the grace window has passed', async () => {
     const stale = 'previous-secret';
     const { service, lookup, updateMany } = await makeService({
       prevRefreshHash: await bcrypt.hash(stale, 4),
-      prevRefreshAt: new Date(Date.now() - 48 * 60 * 60 * 1000), // two days ago
+      prevRefreshAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // beyond the week
     });
     await expect(service.refresh(`${lookup}.${stale}`)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(updateMany).toHaveBeenCalledWith(

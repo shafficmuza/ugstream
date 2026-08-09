@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, UseGuards, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+  Post,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -9,6 +21,41 @@ import { PinService } from './pin.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+
+/**
+ * The refresh token also travels as a long-lived httpOnly cookie, not only in
+ * localStorage. Safari deletes script-writable storage after ~7 days without
+ * a visit, which used to end perfectly healthy web sessions — the product bar
+ * is Netflix's "sign in once, stay in for months", and httpOnly cookies are
+ * exempt from that purge. The cookie is a fallback copy of the same rotating
+ * token, never an independent session.
+ */
+const REFRESH_COOKIE = 'ugs_rt';
+// 400 days — the maximum lifetime Chrome will honour for any cookie.
+const REFRESH_COOKIE_MAX_AGE_MS = 400 * 24 * 60 * 60 * 1000;
+
+export function readRefreshCookie(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === REFRESH_COOKIE) {
+      const value = part.slice(eq + 1).trim();
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+  return null;
+}
+
+function setRefreshCookie(res: Response, refreshToken: string) {
+  res.cookie(REFRESH_COOKIE, refreshToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+  });
+}
 
 @Controller('auth')
 export class AuthController {
@@ -25,8 +72,10 @@ export class AuthController {
   }
 
   @Post('otp/verify')
-  verifyOtp(@Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(dto.phone, dto.code, dto.deviceLabel);
+  async verifyOtp(@Body() dto: VerifyOtpDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.verifyOtp(dto.phone, dto.code, dto.deviceLabel);
+    if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    return result;
   }
 
   /**
@@ -52,8 +101,10 @@ export class AuthController {
    */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('pin/login')
-  pinLogin(@Body() dto: PinLoginDto) {
-    return this.auth.signInWithPin(dto.phone, dto.pin, dto.deviceLabel);
+  async pinLogin(@Body() dto: PinLoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.signInWithPin(dto.phone, dto.pin, dto.deviceLabel);
+    if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    return result;
   }
 
   /** Set or change the caller's own PIN. Changing requires the current one. */
@@ -71,14 +122,25 @@ export class AuthController {
   }
 
   @Post('refresh')
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.auth.refresh(dto.refreshToken);
+  async refresh(
+    @Body() dto: RefreshTokenDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Body first (mobile, and web while its localStorage copy survives), the
+    // httpOnly cookie as the fallback that outlives storage purges.
+    const token = dto.refreshToken ?? readRefreshCookie(req.headers.cookie);
+    if (!token) throw new UnauthorizedException('Missing refresh token.');
+    const result = await this.auth.refresh(token);
+    if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  async logout(@CurrentUser() auth: AuthContext) {
+  async logout(@CurrentUser() auth: AuthContext, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(auth.sessionId);
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
     return { ok: true };
   }
 

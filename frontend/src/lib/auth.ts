@@ -34,20 +34,26 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
 let refreshInFlight: Promise<string | null> | null = null;
 
 /**
- * Exchange the 30-day refresh token for a fresh access token (the backend
- * rotates both). Returns the new access token, or null if refresh isn't
- * possible (no/expired refresh token) — in which case tokens are cleared.
+ * Exchange the rotating refresh token for a fresh access token (the backend
+ * rotates both). Works even with nothing in localStorage: the session also
+ * lives in a long-lived httpOnly cookie the server reads when the body has
+ * no token — that copy survives Safari purging script-writable storage after
+ * 7 days without a visit, so a returning visitor is signed back in silently
+ * instead of being sent to the login screen. Returns the new access token,
+ * or null if refresh isn't possible; tokens are cleared only when the server
+ * definitively refuses the session (401/403), never on a network failure.
  */
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
     try {
       const refreshToken = getRefreshToken();
-      if (!refreshToken) return null;
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        // Same-origin fetch carries the httpOnly cookie by default — no
+        // credentials option needed.
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
       });
       // Only the server actively refusing the token ends a session. Clearing
       // on any non-OK response meant a 502 from the proxy, or a backend
