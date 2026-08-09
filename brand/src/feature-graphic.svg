@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500" width="1024" height="500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1A1A1A"/><stop offset="1" stop-color="#050505"/></linearGradient>
+    <radialGradient id="glow" cx="0.18" cy="0.5" r="0.62">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#E50914" stop-opacity="0"/></radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6121D"/><stop offset="1" stop-color="#B0060F"/></linearGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#bg)"/>
+  <rect width="1024" height="500" fill="url(#glow)"/>
+  <rect x="72" y="150" width="200" height="200" rx="46" fill="url(#tile)"/>
+  <g transform="translate(172,250) scale(0.34) translate(-256,-256)">
+    <path d="M112 382 L112 140 L256 292 L400 140 L400 382" fill="none" stroke="#fff"
+          stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="322" y="238" font-family="DejaVu Sans" font-weight="bold" font-size="76" letter-spacing="1">
+    <tspan fill="#FFFFFF">MUZA</tspan><tspan fill="#E50914" dx="24">WATCH</tspan>
+  </text>
+  <text x="326" y="298" font-family="DejaVu Sans" font-size="27" letter-spacing="1" fill="#B8B8B8">Movies and series, streamed</text>
+  <text x="326" y="348" font-family="DejaVu Sans" font-size="23" letter-spacing="1" fill="#7C7C7C">Watch anywhere · Pay with Mobile Money</text>
+</svg>

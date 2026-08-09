@@ -110,6 +110,14 @@ class _GateState extends State<_Gate> {
                   onPressed: () => auth.retrySession(),
                   child: const Text('Try again'),
                 ),
+                const SizedBox(height: 8),
+                // Always leave a route into the app. An offline screen whose
+                // only action is "try again" is a dead end when the retry
+                // cannot succeed.
+                TextButton(
+                  onPressed: () => auth.signInInstead(),
+                  child: const Text('Sign in instead', style: TextStyle(color: Colors.white70)),
+                ),
               ],
             ),
           ),

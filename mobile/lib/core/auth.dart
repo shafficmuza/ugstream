@@ -62,16 +62,23 @@ class Auth extends ChangeNotifier {
     if (_user != null) await push.onSignedIn();
   }
 
-  /// Whether a refresh token is on disk. A keychain that will not answer is
-  /// not an answer — it reports "yes" so the retry below decides, rather than
-  /// a locked keychain reading as a signed-out user.
+  /// Whether a refresh token is on disk.
+  ///
+  /// A keychain that will not answer is not an answer, so a throw is retried
+  /// rather than believed — but it must NOT be reported as "yes" forever. Doing
+  /// that stranded people on the offline screen with no way to sign in, because
+  /// every later check threw too and the app never concluded anything. After
+  /// the retries it answers with what it can actually read.
   Future<bool> _hasStoredSession() async {
-    try {
-      final refresh = await _tokens.refreshToken;
-      return refresh != null;
-    } catch (_) {
-      return true;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final refresh = await _tokens.refreshToken;
+        return refresh != null;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
     }
+    return false;
   }
 
   /// Confirm the stored session, retrying transient failures.
@@ -84,21 +91,33 @@ class Auth extends ChangeNotifier {
   /// ApiClient clears the tokens itself when that happens, so their absence
   /// is the signal here.
   Future<void> _restoreSession() async {
-    const delays = [Duration.zero, Duration(seconds: 2), Duration(seconds: 5)];
+    // Bounded by wall clock, not just attempt count. Each attempt can sit on
+    // Dio's 20s connect timeout, so three of them plus backoff is over a
+    // minute of splash screen — indistinguishable from a frozen app. Whatever
+    // happens, something is on screen within ~15s.
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
+    const delays = [Duration.zero, Duration(milliseconds: 1500), Duration(seconds: 4)];
+
     for (final delay in delays) {
-      if (delay > Duration.zero) await Future.delayed(delay);
+      if (delay > Duration.zero) {
+        if (DateTime.now().isAfter(deadline)) break;
+        await Future.delayed(delay);
+      }
       try {
         final res = await api.request('/me');
         _user = User.fromJson(res.data);
         _sessionUnavailable = false;
         return;
       } catch (_) {
+        // ApiClient clears the tokens itself when the server actually refuses
+        // the session, so their absence — not the failure — ends it.
         if (!await _hasStoredSession()) {
           _user = null; // genuinely signed out
           _sessionUnavailable = false;
           return;
         }
       }
+      if (DateTime.now().isAfter(deadline)) break;
     }
     _user = null;
     _sessionUnavailable = true; // unreachable, not signed out
@@ -110,6 +129,24 @@ class Auth extends ChangeNotifier {
     _sessionUnavailable = false;
     notifyListeners();
     await _bootstrap();
+  }
+
+  /// Abandon an unconfirmable session and go to the sign-in screen.
+  ///
+  /// The escape hatch the offline screen must always offer: without it, a
+  /// device that cannot confirm its session has no route into the app at all.
+  /// Local only — it deliberately does not call /auth/logout, since the server
+  /// is by definition unreachable when this is used.
+  Future<void> signInInstead() async {
+    try {
+      await _tokens.clear();
+    } catch (_) {
+      // Nothing more to do; the sign-in below replaces whatever is stored.
+    }
+    _user = null;
+    _sessionUnavailable = false;
+    _loading = false;
+    notifyListeners();
   }
 
   Future<void> _loadMe() async {

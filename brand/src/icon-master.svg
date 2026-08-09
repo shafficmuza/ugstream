@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242424"/>
+      <stop offset="1" stop-color="#0B0B0B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.28" r="0.75">
+      <stop offset="0" stop-color="#E50914" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#E50914" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#tile)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <!-- M: two strokes meeting at a centre vertex -->
+  <path d="M120 376 L120 150 L246 268" fill="none" stroke="#FFFFFF" stroke-width="46"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Play: the M's right limb resolved into a triangle -->
+  <path d="M286 146 L286 366 L424 256 Z" fill="#E50914" stroke="#E50914"
+        stroke-width="30" stroke-linejoin="round"/>
+</svg>
