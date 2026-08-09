@@ -102,11 +102,18 @@ export class EpisodesService {
       };
     }
 
-    const token = await this.stream.signPlaybackToken(episode.cfVideoUid!);
+    // The token must outlive an entire sitting, not just an hour: Cloudflare
+    // validates it on EVERY segment request, so with the old 1h default any
+    // film longer than ~60 minutes died mid-stream with "invalid token" (and
+    // a pause-then-resume after an hour hit the same wall). Size it to the
+    // film plus generous pause room, with a 12h floor; the players also
+    // self-recover by re-requesting playback if it ever does lapse.
+    const tokenTtlSecs = Math.max(12 * 3600, (episode.durationSecs ?? 0) + 4 * 3600);
+    const token = await this.stream.signPlaybackToken(episode.cfVideoUid!, tokenTtlSecs);
     return {
       provider: 'cloudflare' as const,
       playbackUrl: this.stream.hlsUrl(episode.cfVideoUid!, token),
-      expiresIn: 3600,
+      expiresIn: tokenTtlSecs,
       ...meta,
     };
   }

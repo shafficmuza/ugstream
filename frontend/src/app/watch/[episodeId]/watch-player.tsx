@@ -18,12 +18,21 @@ export function WatchPlayer({
   startAt,
   hlsToken,
   onPause,
+  onFatalError,
 }: {
   episodeId: string;
   src: string;
   startAt: number;
   hlsToken?: string;
   onPause?: () => void;
+  /**
+   * Playback died and cannot continue on this source — most commonly the
+   * signed Cloudflare URL lapsing (long pause, or a token outlived by a very
+   * long film). Reports the current position so the page can fetch a fresh
+   * playback URL and resume exactly where the viewer was, Netflix-style,
+   * instead of freezing.
+   */
+  onFatalError?: (positionSecs: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -33,7 +42,7 @@ export function WatchPlayer({
 
     // Hides the browser's native "Download" control. This is a UX nicety,
     // not real DRM — the actual protection against ripping is the signed,
-    // hour-scoped Cloudflare Stream URL plus HLS segmenting (see
+    // sitting-scoped Cloudflare Stream URL plus HLS segmenting (see
     // episodes.service.ts `play()`).
     video.setAttribute('controlsList', 'nodownload');
     video.setAttribute('disablePictureInPicture', 'true');
@@ -86,6 +95,13 @@ export function WatchPlayer({
     // HLS manifest, so hls.js can't play it; point the <video> straight at it.
     const isHls = src.includes('.m3u8');
 
+    let dead = false;
+    const reportFatal = () => {
+      if (dead) return; // one report per source — the page swaps us out
+      dead = true;
+      onFatalError?.(Math.floor(video.currentTime));
+    };
+
     if (!isHls) {
       video.src = src;
     } else if (Hls.isSupported()) {
@@ -98,6 +114,17 @@ export function WatchPlayer({
       hls = new Hls(hlsToken ? { loader: TokenLoader as any } : {});
       hls.loadSource(withToken(src));
       hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        // Give hls.js its own recovery a chance for transient network/media
+        // hiccups; anything it cannot absorb (an expired signed URL returns
+        // 401s on every retry) escalates to a full source refresh.
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls?.recoverMediaError();
+          return;
+        }
+        reportFatal();
+      });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari/iOS play HLS natively. Native player can't rewrite segment
       // URLs, so it relies on the token propagating from the manifest URL —
@@ -105,6 +132,11 @@ export function WatchPlayer({
       // R2 path is primarily served through hls.js above.
       video.src = withToken(src);
     }
+
+    // Covers the non-hls.js paths (Safari native HLS, r2_file MP4) and any
+    // <video>-level decode/network failure hls.js didn't own.
+    const handleVideoError = () => reportFatal();
+    video.addEventListener('error', handleVideoError);
 
     video.currentTime = startAt;
 
@@ -132,6 +164,7 @@ export function WatchPlayer({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('playing', enterImmersiveMode);
       video.removeEventListener('contextmenu', blockContextMenu);
+      video.removeEventListener('error', handleVideoError);
       document.removeEventListener('fullscreenchange', restoreOrientation);
       hls?.destroy();
     };

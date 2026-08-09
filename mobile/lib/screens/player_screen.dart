@@ -75,30 +75,82 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Brief centre icon flashed on a double-tap seek.
   IconData? _flashIcon;
 
+  /// Last position that was actually playing — the recovery resume point.
+  /// Tracked continuously because after a playback error the controller's
+  /// own position can be reset or unreliable.
+  int _lastPositionSecs = 0;
+  bool _recovering = false;
+  int _recoveryAttempts = 0;
+
   @override
   void initState() {
     super.initState();
     _catalog = CatalogService(context.read<Auth>().api);
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _init();
+    _init(widget.play.playbackUrl, widget.startAt ?? widget.play.resumeAt);
   }
 
-  Future<void> _init() async {
-    final v = VideoPlayerController.networkUrl(Uri.parse(widget.play.playbackUrl));
+  Future<void> _init(String url, int startAtSecs) async {
+    final v = VideoPlayerController.networkUrl(Uri.parse(url));
     _video = v;
     await v.initialize();
-    final start = widget.startAt ?? widget.play.resumeAt;
-    if (start > 0) await v.seekTo(Duration(seconds: start));
+    if (startAtSecs > 0) await v.seekTo(Duration(seconds: startAtSecs));
     await v.play();
     v.addListener(_onTick);
     if (mounted) setState(() => _ready = true);
     _scheduleHide();
-    _progressTimer = Timer.periodic(const Duration(seconds: 15), (_) => _saveProgress());
+    _progressTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _saveProgress());
   }
 
   void _onTick() {
+    final value = _video?.value;
+    if (value != null && !value.hasError) {
+      final pos = value.position.inSeconds;
+      if (pos > 0) _lastPositionSecs = pos;
+    }
+    // The signed playback URL can lapse (e.g. the app sat paused for many
+    // hours) — the stream then dies with a token error mid-episode. Netflix
+    // behaviour is to resume seamlessly, so fetch a fresh URL and drop the
+    // viewer back on the exact second, instead of freezing on a dead frame.
+    if (value != null && value.hasError && !_recovering) {
+      _recover();
+    }
     if (mounted) setState(() {}); // drives the scrubber/time labels
+  }
+
+  Future<void> _recover() async {
+    if (_recovering || !mounted) return;
+    _recovering = true;
+    _recoveryAttempts += 1;
+    try {
+      final old = _video;
+      _video = null;
+      old?.removeListener(_onTick);
+      await old?.dispose();
+      if (_recoveryAttempts > 3) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Playback keeps failing. Please try again.')),
+          );
+          Navigator.of(context).maybePop();
+        }
+        return;
+      }
+      if (mounted) setState(() => _ready = false);
+      final fresh = await _catalog.play(widget.episodeId);
+      if (!mounted) return;
+      await _init(fresh.playbackUrl, _lastPositionSecs);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connection lost. Please reopen the video.')),
+        );
+        Navigator.of(context).maybePop();
+      }
+    } finally {
+      _recovering = false;
+    }
   }
 
   void _saveProgress() {

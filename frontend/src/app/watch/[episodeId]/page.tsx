@@ -32,7 +32,7 @@ export default function WatchPage() {
   const [chromeVisible, setChromeVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const startPlayback = useCallback(() => {
+  const startPlayback = useCallback((resumeAtOverride?: number) => {
     const token = getAccessToken();
     if (!token) {
       router.replace('/login');
@@ -41,7 +41,9 @@ export default function WatchPage() {
     setError(null);
     setStreamLimit(false);
     apiFetch<PlaybackInfo>(`/episodes/${params.episodeId}/play`, { method: 'POST', token })
-      .then(setPlayback)
+      .then((pb) =>
+        setPlayback(resumeAtOverride == null ? pb : { ...pb, resumeAt: resumeAtOverride }),
+      )
       .catch((e) => {
         const err = e as ApiError;
         if (err.statusCode === 402) {
@@ -60,6 +62,29 @@ export default function WatchPage() {
   useEffect(() => {
     startPlayback();
   }, [startPlayback]);
+
+  // Mid-stream death of the source (typically the signed playback URL
+  // lapsing after a very long pause): fetch a fresh URL and drop the viewer
+  // back at the exact second they were on. Recoveries are capped so a truly
+  // broken video degrades to an error message rather than a reload loop.
+  const recoveries = useRef({ count: 0, windowStart: 0 });
+  const handleFatalError = useCallback(
+    (positionSecs: number) => {
+      const now = Date.now();
+      if (now - recoveries.current.windowStart > 5 * 60_000) {
+        recoveries.current = { count: 0, windowStart: now };
+      }
+      if (recoveries.current.count >= 3) {
+        setPlayback(null);
+        setError('Playback keeps failing. Please try again in a moment.');
+        return;
+      }
+      recoveries.current.count += 1;
+      setPlayback(null); // unmounts the dead player, shows the spinner
+      startPlayback(positionSecs);
+    },
+    [startPlayback],
+  );
 
   // Hand the stream slot back as soon as this player goes away, so another
   // device is not made to wait out the staleness window. Best-effort by
@@ -110,6 +135,7 @@ export default function WatchPage() {
           startAt={playback.resumeAt}
           hlsToken={playback.hlsToken}
           onPause={showChrome}
+          onFatalError={handleFatalError}
         />
       ) : (
         <div className="watch-center">
@@ -117,7 +143,7 @@ export default function WatchPage() {
             <>
               <p style={{ color: '#ff6b6b', marginBottom: 16 }}>{error}</p>
               {streamLimit && (
-                <button className="btn" style={{ marginRight: 8 }} onClick={startPlayback}>
+                <button className="btn" style={{ marginRight: 8 }} onClick={() => startPlayback()}>
                   Try again
                 </button>
               )}
