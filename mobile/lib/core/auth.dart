@@ -20,6 +20,13 @@ class Auth extends ChangeNotifier {
   User? _user;
   bool _loading = true;
 
+  /// A session is stored but could not be confirmed — the server was
+  /// unreachable, not the session refused. The app shows a retry instead of
+  /// the sign-in screen, because asking someone to sign in again over a
+  /// dropped connection is how a perfectly good session gets thrown away.
+  bool _sessionUnavailable = false;
+  bool get sessionUnavailable => _sessionUnavailable;
+
   /// True from a code sign-in by someone with no PIN until they set one or
   /// skip. Deliberately not persisted: the prompt belongs to the sign-in that
   /// raised it, so skipping it does not turn into nagging on every cold start.
@@ -36,13 +43,18 @@ class Auth extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
 
   Future<void> _bootstrap() async {
-    final token = await _tokens.accessToken;
-    if (token == null) {
+    // Keyed off the REFRESH token, not the access token. The access token is
+    // deliberately short-lived, so after any real spell of inactivity it is
+    // expired — treating that as "signed out" sent returning users to the
+    // login screen while a valid 30-day session sat in the keychain. The
+    // refresh token is what says a session exists; `api.request` renews the
+    // access token underneath.
+    if (!await _hasStoredSession()) {
       _loading = false;
       notifyListeners();
       return;
     }
-    await _loadMe();
+    await _restoreSession();
     _loading = false;
     notifyListeners();
     // Only after a session is known good: /devices is authenticated, so
@@ -50,12 +62,65 @@ class Auth extends ChangeNotifier {
     if (_user != null) await push.onSignedIn();
   }
 
+  /// Whether a refresh token is on disk. A keychain that will not answer is
+  /// not an answer — it reports "yes" so the retry below decides, rather than
+  /// a locked keychain reading as a signed-out user.
+  Future<bool> _hasStoredSession() async {
+    try {
+      final refresh = await _tokens.refreshToken;
+      return refresh != null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Confirm the stored session, retrying transient failures.
+  ///
+  /// A handset opened after a spell in a pocket routinely fails its first
+  /// request while the radio reassociates, and a backend deploy takes a few
+  /// seconds. Either used to land on the sign-in screen with a perfectly good
+  /// session still in the keychain — the "it logs me out after a while"
+  /// report. Only the server actually refusing the session ends it, and
+  /// ApiClient clears the tokens itself when that happens, so their absence
+  /// is the signal here.
+  Future<void> _restoreSession() async {
+    const delays = [Duration.zero, Duration(seconds: 2), Duration(seconds: 5)];
+    for (final delay in delays) {
+      if (delay > Duration.zero) await Future.delayed(delay);
+      try {
+        final res = await api.request('/me');
+        _user = User.fromJson(res.data);
+        _sessionUnavailable = false;
+        return;
+      } catch (_) {
+        if (!await _hasStoredSession()) {
+          _user = null; // genuinely signed out
+          _sessionUnavailable = false;
+          return;
+        }
+      }
+    }
+    _user = null;
+    _sessionUnavailable = true; // unreachable, not signed out
+  }
+
+  /// Retry a session that could not be confirmed, from the offline screen.
+  Future<void> retrySession() async {
+    _loading = true;
+    _sessionUnavailable = false;
+    notifyListeners();
+    await _bootstrap();
+  }
+
   Future<void> _loadMe() async {
     try {
       final res = await api.request('/me');
       _user = User.fromJson(res.data);
     } catch (_) {
-      _user = null;
+      // Only drop the user when the session is actually gone. Nulling on any
+      // failure signed people out mid-use whenever a refresh happened to land
+      // during a dropped connection.
+      if (!await _hasStoredSession()) _user = null;
     }
   }
 

@@ -79,6 +79,43 @@ class _GateState extends State<_Gate> {
     if (auth.loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: kAccent)));
     }
+    // A stored session we could not reach the server to confirm. Offer a
+    // retry rather than the sign-in screen: the account is fine, the network
+    // is not, and a sign-in prompt here is what makes the app feel like it
+    // logs people out on its own.
+    if (!auth.isLoggedIn && auth.sessionUnavailable) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.wifi_off, color: Colors.white38, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'Can’t reach Muza Watch',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'You’re still signed in — check your connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white54, fontSize: 14, height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: kAccent),
+                  onPressed: () => auth.retrySession(),
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     if (!auth.isLoggedIn) return const LoginScreen();
     // Signed in, but no PIN yet — the one moment they are certainly paying
     // attention, and the only chance to make the next sign-in cost nothing.
