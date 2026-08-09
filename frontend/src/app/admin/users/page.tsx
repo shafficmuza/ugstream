@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { tableStyle, thStyle, tdStyle } from '../shared';
@@ -10,16 +10,49 @@ interface AdminUser {
   id: string;
   phone: string;
   displayName: string | null;
+  email: string | null;
+  address: string | null;
   role: 'user' | 'editor' | 'admin';
   status: 'active' | 'banned';
   createdAt: string;
+  pinSet: boolean;
+  pinLockedUntil: string | null;
+  sessionCount: number;
+  watchCount: number;
+  subscription: { planName: string | null; expiresAt: string } | null;
 }
 
 const ROLES: AdminUser['role'][] = ['user', 'editor', 'admin'];
 
+/** One labelled field in the expanded detail panel. */
+function Detail({ label, value, empty = '—' }: { label: string; value?: string | null; empty?: string }) {
+  return (
+    <div>
+      <div style={{ opacity: 0.5, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 3, color: value ? '#eee' : '#777' }}>{value || empty}</div>
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [issuing, setIssuing] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Filtered here rather than by round trip: the page already holds the list,
+  // so it narrows on each keystroke without hitting the API. The backend `q`
+  // still matches phone/name/email for when the account count outgrows one page.
+  const visible = useMemo(() => {
+    if (!users) return null;
+    const q = query.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) =>
+      [u.phone, u.displayName, u.email, u.role, u.status].some((f) => f?.toLowerCase().includes(q)),
+    );
+  }, [users, query]);
   const [recovery, setRecovery] = useState<{ phone: string; code: string; minutes: number } | null>(
     null,
   );
@@ -79,7 +112,14 @@ export default function AdminUsersPage() {
   async function toggleStatus(u: AdminUser) {
     const token = getAccessToken();
     if (!token) return;
-    if (u.status === 'active' && !confirm(`Ban ${u.phone}? They won't be able to log in.`)) return;
+    const who = u.displayName ? `${u.displayName} (${u.phone})` : u.phone;
+    if (
+      u.status === 'active' &&
+      !confirm(
+        `Lock ${who}?\n\nThey are signed out immediately on their next request and cannot sign in again until you unlock them. Their account, subscription and history are kept.`,
+      )
+    )
+      return;
     await apiFetch(`/admin/users/${u.id}`, {
       method: 'PATCH',
       token,
@@ -88,11 +128,16 @@ export default function AdminUsersPage() {
     load();
   }
 
-  if (!users) return <p>Loading…</p>;
+  if (!users || !visible) return <p>Loading…</p>;
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, marginBottom: 24 }}>Users</h1>
+      <h1 style={{ fontSize: 22, marginBottom: 24 }}>
+        Users
+        <span style={{ opacity: 0.5, fontSize: 14, fontWeight: 400, marginLeft: 8 }}>
+          {query.trim() ? `${visible.length} of ${users.length}` : users.length}
+        </span>
+      </h1>
 
       <MasterCodePanel />
 
@@ -127,20 +172,59 @@ export default function AdminUsersPage() {
           </button>
         </div>
       )}
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name, phone, email, role or status…"
+          aria-label="Search users"
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            background: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: 6,
+            color: '#eee',
+            fontSize: 14,
+          }}
+        />
+      </div>
+
       <div className="table-wrap">
       <table style={tableStyle}>
         <thead>
           <tr>
+            <th style={thStyle}>Name</th>
             <th style={thStyle}>Phone</th>
             <th style={thStyle}>Joined</th>
             <th style={thStyle}>Role</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Locked out?</th>
+            <th style={thStyle}>Access</th>
+            <th style={thStyle}>Sign-in help</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
+          {visible.map((u) => (
+            <Fragment key={u.id}>
+            <tr>
+              <td style={tdStyle}>
+                <button
+                  onClick={() => setExpanded(expanded === u.id ? null : u.id)}
+                  title="Show details"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: u.displayName ? '#fff' : '#888',
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ opacity: 0.5, marginRight: 6 }}>{expanded === u.id ? '▾' : '▸'}</span>
+                  {u.displayName ?? 'No name'}
+                </button>
+              </td>
               <td style={tdStyle}>{u.phone}</td>
               <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
               <td style={tdStyle}>
@@ -159,6 +243,11 @@ export default function AdminUsersPage() {
               <td style={tdStyle}>
                 <button
                   onClick={() => toggleStatus(u)}
+                  title={
+                    u.status === 'active'
+                      ? 'Lock this account — signs them out and blocks sign-in'
+                      : 'Unlock this account — lets them sign in again'
+                  }
                   style={{
                     padding: '4px 10px',
                     fontSize: 12,
@@ -169,7 +258,7 @@ export default function AdminUsersPage() {
                     color: u.status === 'active' ? '#7cd47c' : '#ff6b6b',
                   }}
                 >
-                  {u.status}
+                  {u.status === 'active' ? '🔓 Unlocked' : '🔒 Locked'}
                 </button>
               </td>
               <td style={tdStyle}>
@@ -190,11 +279,56 @@ export default function AdminUsersPage() {
                 </button>
               </td>
             </tr>
+            {expanded === u.id && (
+              <tr>
+                <td style={{ ...tdStyle, background: '#141414' }} colSpan={6}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                      gap: 14,
+                      padding: '6px 2px',
+                      fontSize: 13,
+                    }}
+                  >
+                    <Detail label="Name" value={u.displayName} />
+                    <Detail label="Phone" value={u.phone} />
+                    <Detail label="Email" value={u.email} />
+                    <Detail label="Address" value={u.address} />
+                    <Detail
+                      label="Subscription"
+                      value={
+                        u.subscription
+                          ? `${u.subscription.planName ?? 'Active'} · until ${new Date(
+                              u.subscription.expiresAt,
+                            ).toLocaleDateString()}`
+                          : null
+                      }
+                      empty="No active subscription"
+                    />
+                    <Detail label="Sign-in PIN" value={u.pinSet ? 'Set' : null} empty="Not set" />
+                    <Detail
+                      label="PIN lockout"
+                      value={
+                        u.pinLockedUntil && new Date(u.pinLockedUntil) > new Date()
+                          ? `Locked until ${new Date(u.pinLockedUntil).toLocaleTimeString()}`
+                          : null
+                      }
+                      empty="None"
+                    />
+                    <Detail label="Devices signed in" value={String(u.sessionCount)} />
+                    <Detail label="Titles watched" value={String(u.watchCount)} />
+                    <Detail label="Joined" value={new Date(u.createdAt).toLocaleString()} />
+                  </div>
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
-          {users.length === 0 && (
+          {visible.length === 0 && (
             <tr>
-              <td style={tdStyle} colSpan={5}>
-                No users yet.
+              <td style={tdStyle} colSpan={6}>
+                {users.length === 0 ? 'No users yet.' : `No users match “${query.trim()}”.`}
               </td>
             </tr>
           )}

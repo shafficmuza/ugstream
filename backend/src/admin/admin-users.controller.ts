@@ -25,7 +25,20 @@ export class AdminUsersController {
   async list(@Query('page') page?: string, @Query('per_page') perPage?: string, @Query('q') q?: string) {
     const pageNum = Math.max(1, parseInt(page ?? '1', 10) || 1);
     const perPageNum = Math.min(100, Math.max(1, parseInt(perPage ?? '30', 10) || 30));
-    const where = q ? { phone: { contains: q } } : {};
+    // Support looks people up by whatever the caller gives them — a name or an
+    // email as readily as a number — so matching only `phone` sent staff to
+    // the database. Case-insensitive, since nobody types a name the way it was
+    // stored.
+    const term = q?.trim();
+    const where = term
+      ? {
+          OR: [
+            { phone: { contains: term } },
+            { displayName: { contains: term, mode: 'insensitive' as const } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
 
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -33,12 +46,48 @@ export class AdminUsersController {
         orderBy: { createdAt: 'desc' },
         skip: (pageNum - 1) * perPageNum,
         take: perPageNum,
+        // Explicit, because spreading the row shipped every user's `pinHash`
+        // to the browser. An admin screen has no use for a credential hash,
+        // and putting one on the wire is how it ends up in a log or a cache.
+        select: {
+          id: true,
+          phone: true,
+          displayName: true,
+          email: true,
+          address: true,
+          role: true,
+          status: true,
+          createdAt: true,
+          pinSetAt: true,
+          pinLockedUntil: true,
+          _count: { select: { sessions: true, watchHistory: true } },
+          subscriptions: {
+            where: { expiresAt: { gt: new Date() } },
+            orderBy: { expiresAt: 'desc' },
+            take: 1,
+            select: { expiresAt: true, plan: { select: { name: true } } },
+          },
+        },
       }),
       this.prisma.user.count({ where }),
     ]);
 
     return {
-      items: items.map((u) => ({ ...u, id: u.id.toString() })),
+      items: items.map((u) => {
+        const { _count, subscriptions, ...rest } = u;
+        const sub = subscriptions[0];
+        return {
+          ...rest,
+          id: u.id.toString(),
+          // Whether a PIN exists, never the PIN or its hash.
+          pinSet: u.pinSetAt != null,
+          sessionCount: _count.sessions,
+          watchCount: _count.watchHistory,
+          // The entitlement axis, which is independent of role — see the
+          // two-access-axes note in EntitlementsService.
+          subscription: sub ? { planName: sub.plan?.name ?? null, expiresAt: sub.expiresAt } : null,
+        };
+      }),
       page: pageNum,
       perPage: perPageNum,
       total,
