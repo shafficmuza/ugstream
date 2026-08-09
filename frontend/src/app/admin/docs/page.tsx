@@ -464,7 +464,7 @@ export default function AdminDocsPage() {
               </tr>
               <tr>
                 <td style={td}>Video stuck on <i>uploading</i></td>
-                <td style={td}>A server transcode is still running (can take hours for 4K), or an upload failed. Re-open the page to refresh status.</td>
+                <td style={td}>A server transcode is still running (can take hours for 4K), or an upload failed. Re-open the page to refresh status. If the upload is not running in your tab, a <b>Reset</b> button appears next to the status — click it to get a clean slot and upload again. Keep the tab open until an upload reaches 100% (the browser will warn you if you try to close it).</td>
               </tr>
               <tr>
                 <td style={td}>&quot;Too many codes requested&quot; on login</td>
