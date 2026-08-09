@@ -31,6 +31,7 @@ const SKIP: RegExp[] = [
 const ALREADY_LOGGED: RegExp[] = [
   /\/admin\/titles$/, // title create
   /\/episodes$/, // add video
+  /\/cancel-upload$/,
   /\/import-url$/,
   /\/register-r2-file$/,
   /\/register-r2-hls$/,

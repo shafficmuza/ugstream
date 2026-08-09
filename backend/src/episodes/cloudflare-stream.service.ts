@@ -194,21 +194,46 @@ export class CloudflareStreamService {
    * hitting play) rather than depending on the webhook alone ever arriving
    * — same pattern as the Stripe/MoMo payment self-heal.
    */
-  async getVideoStatus(
-    videoUid: string,
-  ): Promise<{ ready: boolean; errored: boolean; durationSecs: number; thumbnailUrl: string }> {
+  async getVideoStatus(videoUid: string): Promise<{
+    ready: boolean;
+    errored: boolean;
+    /** The video no longer exists on Cloudflare (expired placeholder, or deleted). */
+    missing: boolean;
+    /** Raw Cloudflare state, e.g. 'pendingupload' | 'downloading' | 'queued' | 'inprogress' | 'ready' | 'error'. */
+    state: string;
+    /** When the video record was created on Cloudflare — lets callers age out dead uploads. */
+    createdAt: Date | null;
+    durationSecs: number;
+    thumbnailUrl: string;
+  }> {
     const res = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}`,
       { headers: { Authorization: `Bearer ${this.apiToken}` } },
     );
     const json = await res.json();
     if (!json.success) {
+      // A 404 is a real answer (the placeholder expired or the video was
+      // deleted), not a lookup failure — callers reclaim the episode slot.
+      if (res.status === 404) {
+        return {
+          ready: false,
+          errored: false,
+          missing: true,
+          state: 'missing',
+          createdAt: null,
+          durationSecs: 0,
+          thumbnailUrl: '',
+        };
+      }
       throw new InternalServerErrorException(`Cloudflare video lookup failed: ${JSON.stringify(json.errors)}`);
     }
     const result = json.result;
     return {
       ready: result.readyToStream === true || result.status?.state === 'ready',
       errored: result.status?.state === 'error',
+      missing: false,
+      state: result.status?.state ?? 'unknown',
+      createdAt: result.created ? new Date(result.created) : null,
       durationSecs: Math.round(result.duration ?? 0),
       thumbnailUrl: result.thumbnail ?? '',
     };

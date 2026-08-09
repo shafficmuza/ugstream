@@ -137,6 +137,18 @@ function EpisodesSection({
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  // Closing the tab mid-upload silently kills the transfer (the tus URL
+  // lives only in this tab) — warn before letting the admin leave.
+  useEffect(() => {
+    if (!uploadingId) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [uploadingId]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
@@ -291,9 +303,12 @@ function EpisodesSection({
       await new Promise<void>((resolve, reject) => {
         const upload = new tus.Upload(file, {
           uploadUrl, // Cloudflare already created the upload server-side
-          // 50MB chunks (multiple of 256KiB, as Cloudflare requires).
-          chunkSize: 50 * 1024 * 1024,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
+          // 16MB chunks (multiple of 256KiB, as Cloudflare requires). Was
+          // 50MB: on a slow uplink the first chunk took minutes to commit,
+          // so a tab closed early left a zero-byte upload behind — smaller
+          // chunks commit progress sooner and retry cheaper.
+          chunkSize: 16 * 1024 * 1024,
+          retryDelays: [0, 3000, 5000, 10000, 20000, 30000],
           metadata: { filename: file.name, filetype: file.type },
           onError: reject,
           onProgress: (sent, total) => setUploadProgress(Math.round((sent / total) * 100)),
@@ -305,9 +320,28 @@ function EpisodesSection({
       onChange();
     } catch (e: any) {
       setError(e.message ?? 'Upload failed.');
+      // The upload died — hand the slot back so the row doesn't sit on
+      // "uploading" forever. Best-effort: the stale-upload self-heal on the
+      // backend catches it anyway if this call doesn't land.
+      await resetUpload(episodeId, { silent: true });
     } finally {
       setUploadingId(null);
       setUploadProgress(null);
+    }
+  }
+
+  /** Abandon a stuck/failed upload and return the row to a clean slot. */
+  async function resetUpload(episodeId: string, opts?: { silent?: boolean }) {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await apiFetch(`/admin/titles/${titleId}/episodes/${episodeId}/cancel-upload`, {
+        method: 'POST',
+        token,
+      });
+      onChange();
+    } catch (e: any) {
+      if (!opts?.silent) setError(e.message ?? 'Could not reset the upload.');
     }
   }
 
@@ -519,6 +553,16 @@ function EpisodesSection({
               <td style={tdStyle}>
                 {ep.cfStatus}
                 <span style={{ opacity: 0.55, fontSize: 11, marginLeft: 6 }}>{providerLabel(ep.videoProvider)}</span>
+                {ep.cfStatus === 'uploading' && uploadingId !== ep.id && ep.videoProvider === 'cloudflare' && (
+                  <button
+                    type="button"
+                    onClick={() => resetUpload(ep.id)}
+                    title="This upload is not running in this tab. Reset it to upload again."
+                    style={{ marginLeft: 8, fontSize: 11, background: 'none', border: '1px solid #666', color: '#ccc', borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
+                  >
+                    Reset
+                  </button>
+                )}
               </td>
               <td style={tdStyle}>
                 {ep.videoProvider === 'r2_hls' || ep.videoProvider === 'r2_file' ? (

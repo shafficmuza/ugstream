@@ -55,7 +55,19 @@ export class EpisodesController {
     @Body() body: CreateEpisodeDto,
   ) {
     const r = await this.episodes.createForTitle(BigInt(titleId), body);
-    this.activity.log(auth.userId, 'video_added', 'Added a video (Cloudflare Stream upload)', BigInt(titleId));
+    this.activity.log(auth.userId, 'video_added', 'Added an episode slot', BigInt(titleId));
+    return r;
+  }
+
+  @UseGuards(StaffGuard)
+  @Post('admin/titles/:titleId/episodes/:episodeId/cancel-upload')
+  async cancelUpload(
+    @CurrentUser() auth: AuthContext,
+    @Param('titleId') titleId: string,
+    @Param('episodeId') episodeId: string,
+  ) {
+    const r = await this.episodes.cancelUpload(BigInt(episodeId));
+    this.activity.log(auth.userId, 'upload_cancelled', 'Cancelled/reset a video upload', BigInt(titleId));
     return r;
   }
 

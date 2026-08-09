@@ -381,20 +381,27 @@ export class EpisodesService {
     }));
   }
 
+  /**
+   * Create an empty episode slot. Deliberately does NOT touch Cloudflare:
+   * the old version eagerly created a direct-upload placeholder here and
+   * marked the row 'uploading', so every "+ Add episode" where the admin
+   * never picked a file (or the browser died before the first chunk) left
+   * a row lying about an upload that never started — nine episodes were
+   * found stuck that way on 2026-08-08. The Cloudflare upload is created
+   * only when bytes are actually about to move (tus-upload / upload-url).
+   */
   async createForTitle(titleId: bigint, dto: { season?: number; number?: number; name?: string }) {
     const slot = await this.nextSlot(titleId, dto.season, dto.number);
-    const { uploadUrl, videoUid } = await this.stream.createDirectUpload();
     const episode = await this.prisma.episode.create({
       data: {
         titleId,
         season: slot.season,
         number: slot.number,
         name: dto.name,
-        cfVideoUid: videoUid,
-        cfStatus: 'uploading',
+        cfStatus: 'pending',
       },
     });
-    return { episode: { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() }, uploadUrl };
+    return { episode: { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() } };
   }
 
   /**
@@ -531,15 +538,68 @@ export class EpisodesService {
     }
 
     const status = await this.stream.getVideoStatus(episode.cfVideoUid).catch(() => null);
-    if (status?.ready) {
+    if (!status) {
+      return episode; // the Cloudflare check itself failed — decide nothing
+    }
+    if (status.ready) {
       await this.markReady(episode.cfVideoUid, status.durationSecs, status.thumbnailUrl);
-    } else if (status?.errored) {
+    } else if (status.errored) {
       await this.markError(episode.cfVideoUid);
+    } else if (status.missing || this.uploadIsDead(status)) {
+      // The upload will never arrive: the Cloudflare video vanished
+      // (expired placeholder), or it has sat in 'pendingupload' far longer
+      // than any live browser upload survives. Reclaim the slot so the row
+      // stops claiming "uploading" forever and the admin can retry.
+      await this.stream.deleteVideo(episode.cfVideoUid);
+      await this.prisma.episode.update({
+        where: { id: episode.id },
+        data: { cfVideoUid: null, cfStatus: 'pending' },
+      });
     } else {
-      return episode; // still genuinely pending, or the Cloudflare check itself failed
+      return episode; // still genuinely pending
     }
 
     return this.prisma.episode.findUniqueOrThrow({ where: { id: episode.id } });
+  }
+
+  /**
+   * A video still in 'pendingupload' this long after creation is
+   * unrecoverable: the one-time tus URL lives only in the browser tab that
+   * requested it, and re-picking a file always requests a fresh upload —
+   * so nothing can ever resume it. 24h is deliberately generous so a slow
+   * overnight upload that IS still moving is never shot down.
+   */
+  private uploadIsDead(status: { state: string; createdAt: Date | null }): boolean {
+    const DEAD_UPLOAD_AGE_MS = 24 * 60 * 60 * 1000;
+    return (
+      status.state === 'pendingupload' &&
+      status.createdAt != null &&
+      Date.now() - status.createdAt.getTime() > DEAD_UPLOAD_AGE_MS
+    );
+  }
+
+  /**
+   * Explicitly abandon an in-flight/failed upload: delete the Cloudflare
+   * video (tolerates 404) and return the row to 'pending' so the admin UI
+   * shows a clean upload slot again. Never touches a ready video.
+   */
+  async cancelUpload(episodeId: bigint) {
+    const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
+    if (!episode) throw new NotFoundException('Episode not found.');
+    if (episode.cfStatus === 'ready') {
+      throw new HttpException('This episode is already ready — nothing to cancel.', HttpStatus.CONFLICT);
+    }
+    if (episode.videoProvider !== 'cloudflare') {
+      throw new HttpException('Only Cloudflare Stream uploads can be cancelled here.', HttpStatus.BAD_REQUEST);
+    }
+    if (episode.cfVideoUid) {
+      await this.stream.deleteVideo(episode.cfVideoUid);
+    }
+    const updated = await this.prisma.episode.update({
+      where: { id: episodeId },
+      data: { cfVideoUid: null, cfStatus: 'pending' },
+    });
+    return { ...updated, id: updated.id.toString(), titleId: updated.titleId.toString() };
   }
 
   async markReady(videoUid: string, durationSecs: number, thumbnailUrl: string) {
