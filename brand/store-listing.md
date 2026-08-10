@@ -30,16 +30,16 @@ must stay reachable — a 404 at review time is an instant rejection.
 Muza Watch
 ```
 
-### Short description (80 max) — 79 chars
+### Short description (80 max)
 ```
-Free learning videos and safe kids shows, plus original Ugandan films.
+Free skills training and learning, safe kids shows, and Ugandan films.
 ```
 
 ### Full description (4000 max)
 ```
 Muza Watch is a Ugandan streaming service built around free educational
-videos, safe viewing for children, and original local films and series made by
-Ugandan creators.
+videos, practical everyday training for all ages, safe viewing for children,
+and original local films and series made by Ugandan creators.
 
 FOR CHILDREN AND FAMILIES
 • A dedicated Kids section with shows and learning videos chosen as suitable
@@ -51,6 +51,15 @@ FOR CHILDREN AND FAMILIES
   each other.
 • Accounts are held by a parent or guardian, and purchases need an adult's
   Mobile Money account or card.
+
+EVERYDAY TRAINING FOR ALL AGES
+• Practical, locally made training you can use the same day — trades and
+  hands-on skills, farming and agriculture, cooking, tailoring, business and
+  money basics, health and home skills.
+• Taught in a Ugandan context, by Ugandan instructors, for Ugandan conditions.
+• Short, step-by-step lessons you can follow on a phone while you work.
+• Suitable for any age — school leavers, parents, workers and small business
+  owners.
 
 ALSO ON MUZA WATCH
 • Original local films and series produced in Uganda.
@@ -75,8 +84,8 @@ SIMPLE TO USE
 • Watch full screen in landscape, with tap-to-seek controls.
 
 FREE AND PAID
-Educational content is free to watch. A subscription unlocks the full
-catalogue of original local films and series, and can be paid with MTN or
+Educational and training content is free to watch. A subscription unlocks the
+full catalogue of original local films and series, and can be paid with MTN or
 Airtel Mobile Money, or by card. Plans are daily, weekly or monthly — cancel
 any time, no long contract.
 
@@ -93,10 +102,10 @@ Muza Watch is operated by Pro Media Systems LLC.
 ```
 
 ### Category and tags
-- **Category:** Education, if children's and learning content is the larger part
-  of the catalogue; Entertainment otherwise. Pick the one matching what a
-  reviewer will actually see.
-- **Tags:** kids, education, learning, streaming, movies, series, Uganda
+- **Category:** Education, if the training, learning and children's libraries
+  are the larger part of the catalogue; Entertainment otherwise. Pick the one
+  matching what a reviewer will actually see.
+- **Tags:** kids, education, training, skills, learning, streaming, Uganda
 - **Contains ads:** No
 - **In-app purchases:** Yes — subscription plans
 
@@ -109,20 +118,20 @@ Muza Watch is operated by Pro Media Systems LLC.
 Muza Watch
 ```
 
-### Subtitle (30 max) — 30 chars
+### Subtitle (30 max)
 ```
-Kids, learning & local films
+Kids, training & local films
 ```
 
 ### Promotional text (170 max)
 ```
-Free learning videos, a safe Kids section with no ads, and original Ugandan
-films and series. Sign in once with your phone and pay with Mobile Money.
+Free everyday skills training, learning videos, a safe Kids section with no
+ads, and original Ugandan films. Sign in once and pay with Mobile Money.
 ```
 
 ### Keywords (100 max, comma separated, no spaces) — 92 chars
 ```
-kids,children,education,learning,uganda,ugandan,african,movies,series,films,streaming,family,school
+kids,training,skills,education,learning,uganda,ugandan,african,farming,movies,series,films,family
 ```
 
 ### Description
