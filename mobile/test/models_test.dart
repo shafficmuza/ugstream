@@ -43,6 +43,24 @@ void main() {
     expect(series.epLabel, 'S2 E5');
   });
 
+  test('PlayInfo carries the server duration, and defaults to 0 without one', () {
+    // The player clamps seeks against this rather than the duration read off
+    // the HLS manifest, which can be a segment out or momentarily 0 — an
+    // unguarded 0 upper bound sent every forward seek back to the start.
+    final withDuration = PlayInfo.fromJson({
+      'provider': 'cloudflare', 'playbackUrl': 'u', 'resumeAt': 0, 'durationSecs': 2598,
+      'title': {'name': 'M', 'kind': 'movie'},
+    });
+    expect(withDuration.durationSecs, 2598);
+
+    // An older backend that does not send the field must still parse.
+    final without = PlayInfo.fromJson({
+      'provider': 'cloudflare', 'playbackUrl': 'u', 'resumeAt': 0,
+      'title': {'name': 'M', 'kind': 'movie'},
+    });
+    expect(without.durationSecs, 0);
+  });
+
   test('ContinueItem computes progress', () {
     final c = ContinueItem.fromJson({
       'episodeId': 9, 'positionSecs': 300, 'durationSecs': 600,

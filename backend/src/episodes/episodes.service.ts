@@ -78,6 +78,11 @@ export class EpisodesService {
 
     const meta = {
       resumeAt: history?.positionSecs ?? 0,
+      // The authoritative running time, from Cloudflare's own API or the
+      // playlist probe. A player reading duration off an HLS manifest gets a
+      // sum of EXTINF values that can be a segment out, or 0 while the
+      // manifest is still loading — clients use this to clamp seeks instead.
+      durationSecs: episode.durationSecs ?? 0,
       // Metadata for the /watch page chrome (back-arrow target + overlay).
       title: { name: title.name, slug: title.slug, kind: title.kind },
       episode: { season: episode.season, number: episode.number, name: episode.name },

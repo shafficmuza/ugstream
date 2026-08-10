@@ -75,6 +75,7 @@ class FakeEpisodeDb {
       return { ...r };
     },
     findMany: async () => this.rows.map((r) => ({ ...r })),
+    count: async ({ where }: any) => this.rows.filter((r) => this.matches(r, where)).length,
     update: async ({ where, data }: any) => {
       const r = this.rows.find((x) => x.id === where.id);
       if (!r) throw new Error(`episode ${where.id} not found`);
@@ -85,6 +86,27 @@ class FakeEpisodeDb {
       for (const r of this.rows.filter((x) => this.matches(x, where))) Object.assign(r, data);
       return {};
     },
+  };
+
+  /** Where each user got to. Keyed "userId:episodeId". */
+  positions = new Map<string, number>();
+  watchHistory = {
+    findUnique: async ({ where }: any) => {
+      const { userId, episodeId } = where.userId_episodeId;
+      const positionSecs = this.positions.get(`${userId}:${episodeId}`);
+      return positionSecs == null ? null : { userId, episodeId, positionSecs };
+    },
+  };
+
+  title = {
+    findUniqueOrThrow: async ({ where }: any) => ({
+      id: where.id,
+      name: 'The Asset',
+      slug: 'the-asset',
+      kind: 'series',
+      access: 'subscription',
+      priceUgx: null,
+    }),
   };
 }
 
@@ -137,6 +159,11 @@ class FakeCloudflare {
       thumbnailUrl: v.state === 'ready' ? `https://thumbs.example/${uid}.jpg` : '',
     };
   });
+
+  signPlaybackToken = jest.fn(async (uid: string, ttl: number) => `tok-${uid}-${ttl}`);
+
+  hlsUrl = (uid: string, token: string) =>
+    `https://customer-x.cloudflarestream.com/${token}/manifest/video.m3u8#${uid}`;
 
   // Test helpers: what Cloudflare's side does out-of-band.
   finishEncoding(uid: string, durationSecs: number) {
@@ -473,4 +500,75 @@ describe('series upload flow (end to end)', () => {
       expect(db.rows[0].name).toBe('The Reckoning');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // What the players are handed when someone presses play.
+  // -------------------------------------------------------------------------
+
+  describe('play()', () => {
+    const USER = 7n;
+
+    /** A ready Cloudflare episode with a known running time. */
+    const readyEpisode = async (service: EpisodesService, db: FakeEpisodeDb) => {
+      const { episode } = await service.createForTitle(TITLE, { season: 1, number: 1 });
+      await service.getTusUploadUrl(BigInt(episode.id), 1_000, 'e1.mkv');
+      await service.markReady(db.rows[0].cfVideoUid!, 2598, 'https://thumbs.example/x.jpg');
+      return db.rows[0];
+    };
+
+    it('reports the running time the server knows, not one the client must guess', async () => {
+      // The players clamp seeks against this. Reading duration off the HLS
+      // manifest instead gives a value that can be a segment out, or 0 while
+      // the manifest is still loading — and a 0 upper bound made every
+      // forward seek clamp to the start of the episode.
+      const { service, db } = makeService();
+      await readyEpisode(service, db);
+
+      const play = await service.play(USER, db.rows[0].id, 'sess-1');
+
+      expect(play.durationSecs).toBe(2598);
+    });
+
+    it('resumes from the saved position', async () => {
+      const { service, db } = makeService();
+      await readyEpisode(service, db);
+      db.positions.set(`${USER}:${db.rows[0].id}`, 1400);
+
+      const play = await service.play(USER, db.rows[0].id, 'sess-1');
+
+      expect(play.resumeAt).toBe(1400);
+    });
+
+    it('starts at zero for an episode never watched, and still reports duration', async () => {
+      const { service, db } = makeService();
+      await readyEpisode(service, db);
+
+      const play = await service.play(USER, db.rows[0].id, 'sess-1');
+
+      expect(play.resumeAt).toBe(0);
+      expect(play.durationSecs).toBe(2598);
+    });
+
+    it('signs a token that outlives the film rather than a flat hour', async () => {
+      const { service, db, cf } = makeService();
+      await readyEpisode(service, db);
+
+      await service.play(USER, db.rows[0].id, 'sess-1');
+
+      const [, ttl] = cf.signPlaybackToken.mock.calls[0];
+      expect(ttl).toBeGreaterThanOrEqual(12 * 3600);
+      expect(ttl).toBeGreaterThan(2598); // and past the end of this episode
+    });
+
+    it('reports 0 duration rather than failing when it was never recorded', async () => {
+      const { service, db } = makeService();
+      await readyEpisode(service, db);
+      db.rows[0].durationSecs = null;
+
+      const play = await service.play(USER, db.rows[0].id, 'sess-1');
+
+      expect(play.durationSecs).toBe(0);
+    });
+  });
+
 });

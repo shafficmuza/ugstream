@@ -171,10 +171,22 @@ class TitleDetail {
 }
 
 class PlayInfo {
-  PlayInfo({required this.provider, required this.playbackUrl, required this.resumeAt, this.titleName, this.epLabel});
+  PlayInfo({
+    required this.provider,
+    required this.playbackUrl,
+    required this.resumeAt,
+    this.durationSecs = 0,
+    this.titleName,
+    this.epLabel,
+  });
   final String provider;
   final String playbackUrl;
   final int resumeAt;
+
+  /// Running time as the server knows it, 0 when unknown. The player prefers
+  /// this over the duration AVPlayer/ExoPlayer reads off the HLS manifest,
+  /// which can be a segment out or momentarily 0.
+  final int durationSecs;
   final String? titleName;
   final String? epLabel;
 
@@ -184,6 +196,7 @@ class PlayInfo {
       provider: j['provider'] ?? 'cloudflare',
       playbackUrl: j['playbackUrl'] ?? '',
       resumeAt: (j['resumeAt'] ?? 0) as int,
+      durationSecs: (j['durationSecs'] ?? 0) as int,
       titleName: (j['title'] as Map?)?['name'],
       epLabel: ep != null && (j['title'] as Map?)?['kind'] == 'series' ? 'S${ep['season']} E${ep['number']}' : null,
     );
