@@ -491,24 +491,68 @@ export class EpisodesService {
   }
 
   /**
+   * The episode row an ingest should write into: an existing EMPTY slot if the
+   * admin already created one, otherwise a free slot to create.
+   *
+   * An empty slot is a row from "+ Add episode" that never received a video.
+   * Treating it as a clash is what made series unimportable: the admin lays
+   * out S1E1..E6 in advance, then every server-side import answers 409 and the
+   * only remaining route is a multi-gigabyte browser upload. A slot that
+   * already holds a video is still a real conflict and still refused.
+   */
+  private async claimSlot(
+    titleId: bigint,
+    season?: number,
+    number?: number,
+  ): Promise<{ season: number; number: number; existingId: bigint | null }> {
+    const s = season ?? 1;
+    if (number != null) {
+      const existing = await this.prisma.episode.findFirst({
+        where: { titleId, season: s, number },
+        select: { id: true, cfVideoUid: true, r2Prefix: true },
+      });
+      if (existing) {
+        const holdsVideo = existing.cfVideoUid != null || existing.r2Prefix != null;
+        if (holdsVideo) {
+          throw new HttpException(
+            `Season ${s} episode ${number} already has a video. Delete it first, or use a different number.`,
+            HttpStatus.CONFLICT,
+          );
+        }
+        return { season: s, number, existingId: existing.id };
+      }
+      return { season: s, number, existingId: null };
+    }
+    const slot = await this.nextSlot(titleId, s, undefined);
+    return { ...slot, existingId: null };
+  }
+
+  /**
    * Import a video into an episode straight from a URL via Cloudflare's
    * server-side ingest — the reliable path for large files (no ~200MB
    * browser-upload ceiling). Deletes any superseded placeholder first.
    */
   async importFromUrl(titleId: bigint, url: string, name: string, dto: { season?: number; number?: number }) {
     // Resolve the slot BEFORE telling Cloudflare to ingest, so a duplicate
-    // doesn't leave an orphaned video sitting in Stream.
-    const slot = await this.nextSlot(titleId, dto.season, dto.number);
+    // doesn't leave an orphaned video sitting in Stream. An empty slot the
+    // admin created in advance is filled rather than refused.
+    const slot = await this.claimSlot(titleId, dto.season, dto.number);
     const { videoUid } = await this.stream.copyFromUrl(url, name);
-    const episode = await this.prisma.episode.create({
-      data: {
-        titleId,
-        season: slot.season,
-        number: slot.number,
-        cfVideoUid: videoUid,
-        cfStatus: 'uploading',
-      },
-    });
+
+    const episode = slot.existingId
+      ? await this.prisma.episode.update({
+          where: { id: slot.existingId },
+          data: { cfVideoUid: videoUid, cfStatus: 'uploading', videoProvider: 'cloudflare' },
+        })
+      : await this.prisma.episode.create({
+          data: {
+            titleId,
+            season: slot.season,
+            number: slot.number,
+            cfVideoUid: videoUid,
+            cfStatus: 'uploading',
+          },
+        });
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 

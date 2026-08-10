@@ -317,16 +317,62 @@ describe('series upload flow (end to end)', () => {
     expect(cf.videos.size).toBe(1); // no leftovers
   });
 
-  it('import-url takes the requested slot and 409s on a clash instead of orphaning a video', async () => {
-    const { service, cf } = makeService();
-    await service.createForTitle(TITLE, { season: 1, number: 1 });
+  it('import-url FILLS an empty slot the admin created in advance', async () => {
+    // The bug that made series unimportable: an admin lays out S1E1..E6 with
+    // "+ Add episode", then every server-side import answers 409 because the
+    // empty row looks like a clash — leaving only a multi-gigabyte browser
+    // upload as a route in.
+    const { service, db, cf } = makeService();
+    const { episode } = await service.createForTitle(TITLE, { season: 1, number: 1 });
+    expect(db.rows).toHaveLength(1);
+
+    const ep = await service.importFromUrl(TITLE, 'https://media.example/e1.mkv', 'E1', {
+      season: 1,
+      number: 1,
+    });
+
+    expect(ep.id).toBe(episode.id); // same row, not a duplicate
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0].cfStatus).toBe('uploading');
+    expect(db.rows[0].cfVideoUid).toBeTruthy();
+    expect(cf.copyFromUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('import-url still refuses a slot that already holds a video', async () => {
+    const { service, db, cf } = makeService();
+    const { episode } = await service.createForTitle(TITLE, { season: 1, number: 1 });
+    await service.getTusUploadUrl(BigInt(episode.id), 1_000, 'a.mkv');
+    await service.markReady(db.rows[0].cfVideoUid!, 100, '');
 
     await expect(
-      service.importFromUrl(TITLE, 'https://media.example/f.mkv', 'f.mkv', { season: 1, number: 1 }),
-    ).rejects.toThrow(/already exists/);
-    expect(cf.copyFromUrl).not.toHaveBeenCalled(); // slot checked BEFORE ingest
+      service.importFromUrl(TITLE, 'https://media.example/e1.mkv', 'E1', { season: 1, number: 1 }),
+    ).rejects.toThrow(/already has a video/);
+    expect(cf.copyFromUrl).not.toHaveBeenCalled(); // checked BEFORE ingest
+  });
 
-    const ep = await service.importFromUrl(TITLE, 'https://media.example/f.mkv', 'f.mkv', { season: 1, number: 2 });
+  it('filling empty slots across a whole season leaves one row per episode', async () => {
+    const { service, db } = makeService();
+    for (let n = 1; n <= 6; n++) await service.createForTitle(TITLE, { season: 1, number: n });
+    for (let n = 1; n <= 6; n++) {
+      await service.importFromUrl(TITLE, `https://media.example/e${n}.mkv`, `E${n}`, {
+        season: 1,
+        number: n,
+      });
+    }
+    expect(db.rows).toHaveLength(6);
+    expect(db.rows.map((r) => r.number).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(db.rows.every((r) => r.cfStatus === 'uploading' && r.cfVideoUid)).toBe(true);
+  });
+
+  it('import-url takes the season and number it is given', async () => {
+    const { service, cf } = makeService();
+
+    const ep = await service.importFromUrl(TITLE, 'https://media.example/f.mkv', 'f.mkv', {
+      season: 2,
+      number: 4,
+    });
+
+    expect([ep.season, ep.number]).toEqual([2, 4]);
     expect(ep.cfStatus).toBe('uploading');
     expect(cf.copyFromUrl).toHaveBeenCalledTimes(1);
   });
