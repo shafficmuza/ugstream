@@ -151,16 +151,22 @@ class FakeCloudflare {
 function makeService() {
   const db = new FakeEpisodeDb();
   const cf = new FakeCloudflare();
+  const r2 = {
+    configured: true,
+    publicUrl: (key: string) => `https://cdn.example/${key}`,
+    exists: jest.fn().mockResolvedValue(true),
+  };
+  const transcode = { startTranscode: jest.fn() };
   const service = new EpisodesService(
     db as any,
     { check: jest.fn().mockResolvedValue({ entitled: true, reason: 'staff' }) } as any, // entitlements
     cf as any,
-    {} as any, // r2
-    {} as any, // transcode
+    r2 as any,
+    transcode as any,
     { touch: jest.fn(), acquire: jest.fn() } as any, // leases
     { get: jest.fn() } as any, // config
   );
-  return { service, db, cf };
+  return { service, db, cf, r2, transcode };
 }
 
 const TITLE = 133n;
@@ -375,5 +381,74 @@ describe('series upload flow (end to end)', () => {
     expect([ep.season, ep.number]).toEqual([2, 4]);
     expect(ep.cfStatus).toBe('uploading');
     expect(cf.copyFromUrl).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Every ingest path, not just the URL import.
+  //
+  // Filling a pre-created slot was originally fixed for importFromUrl alone,
+  // leaving the three R2 routes the admin UI actually offers for series
+  // ("Ready 4K file", "Transcode", "Ladder") still answering 409 on the very
+  // workflow the fix was written for: lay out S1E1..E6, then upload into each.
+  // -------------------------------------------------------------------------
+
+  describe('filling a slot the admin created in advance', () => {
+    /** Drives one ingest path into season 1 episode 1 of TITLE. */
+    const paths: [string, (s: EpisodesService) => Promise<any>][] = [
+      ['register-r2-file', (s) => s.registerR2File(TITLE, 'files/x.mp4', { season: 1, number: 1 })],
+      ['transcode-4k-r2', (s) => s.transcode4kFromR2(TITLE, 'sources/x.mkv', { season: 1, number: 1 })],
+      ['register-r2-hls', (s) => s.registerR2Hls(TITLE, 'hls/pre-abc/', { season: 1, number: 1 })],
+      ['transcode-4k (url)', (s) => s.transcode4k(TITLE, 'https://media.example/x.mkv', { season: 1, number: 1 })],
+    ];
+
+    beforeEach(() => {
+      // registerR2Hls probes the uploaded master playlist for its duration.
+      global.fetch = jest.fn().mockResolvedValue({
+        text: async () => '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv0.m3u8\n#EXTINF:6.0,\ns0.ts\n',
+      }) as any;
+    });
+
+    it.each(paths)('%s fills the empty slot instead of 409ing', async (_name, run) => {
+      const { service, db } = makeService();
+      const { episode } = await service.createForTitle(TITLE, { season: 1, number: 1, name: 'Pilot' });
+
+      const ep = await run(service);
+
+      expect(ep.id).toBe(episode.id); // same row, not a duplicate
+      expect(db.rows).toHaveLength(1);
+      expect(db.rows[0].name).toBe('Pilot'); // an unnamed upload keeps the slot's label
+    });
+
+    it.each(paths)('%s still refuses a slot that already holds a video', async (_name, run) => {
+      const { service, db } = makeService();
+      const { episode } = await service.createForTitle(TITLE, { season: 1, number: 1 });
+      await service.getTusUploadUrl(BigInt(episode.id), 1_000, 'a.mkv');
+      await service.markReady(db.rows[0].cfVideoUid!, 100, '');
+
+      await expect(run(service)).rejects.toThrow(/already has a video/);
+      expect(db.rows).toHaveLength(1);
+    });
+
+    it('a whole season laid out in advance takes one upload each, one row each', async () => {
+      const { service, db } = makeService();
+      for (let n = 1; n <= 6; n++) await service.createForTitle(TITLE, { season: 1, number: n });
+
+      for (let n = 1; n <= 6; n++) {
+        await service.registerR2File(TITLE, `files/e${n}.mp4`, { season: 1, number: n });
+      }
+
+      expect(db.rows).toHaveLength(6);
+      expect(db.rows.map((r) => r.number).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(db.rows.every((r) => r.cfStatus === 'ready' && r.r2Prefix)).toBe(true);
+    });
+
+    it('an upload that carries its own name overwrites the slot label', async () => {
+      const { service, db } = makeService();
+      await service.createForTitle(TITLE, { season: 1, number: 1, name: 'Placeholder' });
+
+      await service.registerR2File(TITLE, 'files/x.mp4', { season: 1, number: 1, name: 'The Reckoning' });
+
+      expect(db.rows[0].name).toBe('The Reckoning');
+    });
   });
 });

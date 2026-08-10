@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
@@ -133,7 +133,26 @@ function EpisodesSection({
 }) {
   const [adding, setAdding] = useState(false);
   const [season, setSeason] = useState('1');
-  const [number, setNumber] = useState(String(episodes.length + 1));
+  const [number, setNumber] = useState('1');
+  // Typing your own episode number stops the suggestion below from
+  // overwriting it; switching season starts suggesting again.
+  const [numberTouched, setNumberTouched] = useState(false);
+
+  // Next free number WITHIN the selected season. The old default counted
+  // every season at once — a season 1 with six episodes made season 2 start
+  // at 7 — and, being a useState initialiser, never refreshed after an
+  // episode was added. So adding several in a row reused one number and each
+  // upload after the first was refused as a clash.
+  const nextNumber = useMemo(() => {
+    const s = parseInt(season, 10);
+    return episodes
+      .filter((e) => e.season === (Number.isNaN(s) ? 1 : s))
+      .reduce((max, e) => Math.max(max, e.number), 0) + 1;
+  }, [episodes, season]);
+
+  useEffect(() => {
+    if (!numberTouched) setNumber(String(nextNumber));
+  }, [nextNumber, numberTouched]);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -511,11 +530,25 @@ function EpisodesSection({
             <>
               <div>
                 <label style={labelStyle}>Season</label>
-                <input style={{ ...inputStyle, width: 80 }} value={season} onChange={(e) => setSeason(e.target.value)} />
+                <input
+                  style={{ ...inputStyle, width: 80 }}
+                  value={season}
+                  onChange={(e) => {
+                    setSeason(e.target.value);
+                    setNumberTouched(false);
+                  }}
+                />
               </div>
               <div>
                 <label style={labelStyle}>Number</label>
-                <input style={{ ...inputStyle, width: 80 }} value={number} onChange={(e) => setNumber(e.target.value)} />
+                <input
+                  style={{ ...inputStyle, width: 80 }}
+                  value={number}
+                  onChange={(e) => {
+                    setNumberTouched(true);
+                    setNumber(e.target.value);
+                  }}
+                />
               </div>
             </>
           )}
