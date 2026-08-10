@@ -33,8 +33,35 @@ class _FakeTokens extends TokenStore {
   @override
   Future<void> clear() async => cleared = true;
 
+  String? savedAccess;
   @override
-  Future<void> save(String access, String refresh) async {}
+  Future<void> save(String access, String refresh) async => savedAccess = access;
+}
+
+/// Refresh succeeds and hands back a token pair. Separate from [_Adapter]
+/// because that one answers with an empty body, which can only ever exercise
+/// the failure branches.
+class _RenewingAdapter implements HttpClientAdapter {
+  _RenewingAdapter(this.refreshStatus);
+  final int refreshStatus;
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<List<int>>? stream,
+      Future<void>? cancelFuture) async {
+    if (options.path.contains('/auth/refresh')) {
+      return ResponseBody.fromString(
+        '{"accessToken":"fresh-access","refreshToken":"lookup.fresh"}',
+        refreshStatus,
+        headers: {Headers.contentTypeHeader: [Headers.jsonContentType]},
+      );
+    }
+    return ResponseBody.fromString('{}', 401, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType]
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 /// 401 on the ordinary call, so the refresh branch always runs; [refreshStatus]
@@ -104,4 +131,28 @@ void main() {
     expect(tokens.cleared, isTrue);
     expect(expired, isTrue);
   });
+
+  // The bug behind every "the app logged me out" report. NestJS answers a
+  // @Post() with 201, so /auth/refresh returns 201 — and the client accepted
+  // only 200. Refresh silently never took effect: the renewed pair was thrown
+  // away, the session was never extended, and once the 15-minute access token
+  // expired the app could not talk to the API at all. Every failure branch had
+  // a test; the success path had none, which is why it survived.
+  for (final status in [200, 201]) {
+    test('a $status refresh renews the session and stores the new tokens', () async {
+      final tokens = _FakeTokens();
+      var expired = false;
+      final api = ApiClient(tokens)..onSessionExpired = () => expired = true;
+      api.debugAdapter = _RenewingAdapter(status);
+
+      // The retried call still 401s in this fixture, so the call itself throws;
+      // what matters is that the refresh was accepted and persisted.
+      await expectLater(api.request('/me'), throwsA(isA<ApiException>()));
+
+      expect(tokens.savedAccess, 'fresh-access',
+          reason: 'a $status refresh must be treated as success and stored');
+      expect(tokens.cleared, isFalse);
+      expect(expired, isFalse);
+    });
+  }
 }

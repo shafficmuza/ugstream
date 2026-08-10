@@ -137,7 +137,15 @@ class ApiClient {
             return (null, _RefreshOutcome.unreachable);
           }
 
-          if (res.statusCode == 200 && res.data is Map) {
+          // Any 2xx, not just 200. NestJS answers a @Post() with 201, which is
+          // exactly what /auth/refresh returns — so this branch never matched
+          // in production and every refresh fell through to "unreachable".
+          // The session was never renewed, /me kept failing once the 15-minute
+          // access token expired, and the app looked like it had signed the
+          // user out on its own. The success path had no test, which is how it
+          // survived; there is one now.
+          final ok = res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300;
+          if (ok && res.data is Map) {
             final a = res.data['accessToken'] as String?;
             final r = res.data['refreshToken'] as String?;
             if (a != null && r != null) {
