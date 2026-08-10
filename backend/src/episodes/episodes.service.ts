@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { Episode } from '@prisma/client';
+import { Episode, StreamStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
@@ -78,6 +78,11 @@ export class EpisodesService {
 
     const meta = {
       resumeAt: history?.positionSecs ?? 0,
+      // The authoritative running time, from Cloudflare's own API or the
+      // playlist probe. A player reading duration off an HLS manifest gets a
+      // sum of EXTINF values that can be a segment out, or 0 while the
+      // manifest is still loading — clients use this to clamp seeks instead.
+      durationSecs: episode.durationSecs ?? 0,
       // Metadata for the /watch page chrome (back-arrow target + overlay).
       title: { name: title.name, slug: title.slug, kind: title.kind },
       episode: { season: episode.season, number: episode.number, name: episode.name },
@@ -131,15 +136,13 @@ export class EpisodesService {
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
-    const episode = await this.prisma.episode.create({
-      data: {
-        titleId,
-        ...(await this.nextSlot(titleId, dto.season, dto.number)),
-        name: dto.name,
-        videoProvider: 'r2_hls',
-        cfStatus: 'uploading',
-      },
-    });
+    const slot = await this.claimSlot(titleId, dto.season, dto.number);
+    const episode = await this.writeSlot(
+      titleId,
+      slot,
+      { videoProvider: 'r2_hls', cfStatus: 'uploading' },
+      dto.name,
+    );
     this.transcode.startTranscode(episode.id, sourceUrl);
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
@@ -201,16 +204,13 @@ export class EpisodesService {
   ) {
     this.requireR2();
     if (!key) throw new HttpException('Missing uploaded file key.', HttpStatus.BAD_REQUEST);
-    const episode = await this.prisma.episode.create({
-      data: {
-        titleId,
-        ...(await this.nextSlot(titleId, dto.season, dto.number)),
-        name: dto.name,
-        videoProvider: 'r2_file',
-        r2Prefix: key,
-        cfStatus: 'ready',
-      },
-    });
+    const slot = await this.claimSlot(titleId, dto.season, dto.number);
+    const episode = await this.writeSlot(
+      titleId,
+      slot,
+      { videoProvider: 'r2_file', r2Prefix: key, cfStatus: 'ready' },
+      dto.name,
+    );
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
@@ -222,15 +222,13 @@ export class EpisodesService {
   async transcode4kFromR2(titleId: bigint, key: string, dto: { season?: number; number?: number; name?: string }) {
     this.requireR2();
     if (!key) throw new HttpException('Missing uploaded source key.', HttpStatus.BAD_REQUEST);
-    const episode = await this.prisma.episode.create({
-      data: {
-        titleId,
-        ...(await this.nextSlot(titleId, dto.season, dto.number)),
-        name: dto.name,
-        videoProvider: 'r2_hls',
-        cfStatus: 'uploading',
-      },
-    });
+    const slot = await this.claimSlot(titleId, dto.season, dto.number);
+    const episode = await this.writeSlot(
+      titleId,
+      slot,
+      { videoProvider: 'r2_hls', cfStatus: 'uploading' },
+      dto.name,
+    );
     this.transcode.startTranscode(episode.id, this.r2.publicUrl(key), key);
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
@@ -299,17 +297,18 @@ export class EpisodesService {
       );
     }
     const durationSecs = await this.probeHlsDuration(this.r2.publicUrl(masterKey)).catch(() => null);
-    const episode = await this.prisma.episode.create({
-      data: {
-        titleId,
-        ...(await this.nextSlot(titleId, dto.season, dto.number)),
-        name: dto.name,
+    const slot = await this.claimSlot(titleId, dto.season, dto.number);
+    const episode = await this.writeSlot(
+      titleId,
+      slot,
+      {
         videoProvider: 'r2_hls',
         r2Prefix: prefix,
         cfStatus: 'ready',
         durationSecs: durationSecs ? Math.round(durationSecs) : null,
       },
-    });
+      dto.name,
+    );
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
@@ -528,6 +527,38 @@ export class EpisodesService {
   }
 
   /**
+   * Write an ingested video into the slot claimSlot resolved: fill the empty
+   * row in place, or create it when the admin never laid one out. Paired with
+   * claimSlot rather than folded into it because the Cloudflare import must
+   * claim the slot BEFORE asking Stream to ingest (a clash would otherwise
+   * orphan a video) and only write the row afterwards.
+   */
+  private async writeSlot(
+    titleId: bigint,
+    slot: { season: number; number: number; existingId: bigint | null },
+    video: {
+      videoProvider: string;
+      cfStatus: StreamStatus;
+      cfVideoUid?: string;
+      r2Prefix?: string;
+      durationSecs?: number | null;
+    },
+    name?: string,
+  ): Promise<Episode> {
+    if (slot.existingId) {
+      return this.prisma.episode.update({
+        where: { id: slot.existingId },
+        // A slot the admin already labelled keeps its name unless this
+        // upload carries one of its own.
+        data: { ...video, ...(name ? { name } : {}) },
+      });
+    }
+    return this.prisma.episode.create({
+      data: { titleId, season: slot.season, number: slot.number, name, ...video },
+    });
+  }
+
+  /**
    * Import a video into an episode straight from a URL via Cloudflare's
    * server-side ingest — the reliable path for large files (no ~200MB
    * browser-upload ceiling). Deletes any superseded placeholder first.
@@ -539,20 +570,13 @@ export class EpisodesService {
     const slot = await this.claimSlot(titleId, dto.season, dto.number);
     const { videoUid } = await this.stream.copyFromUrl(url, name);
 
-    const episode = slot.existingId
-      ? await this.prisma.episode.update({
-          where: { id: slot.existingId },
-          data: { cfVideoUid: videoUid, cfStatus: 'uploading', videoProvider: 'cloudflare' },
-        })
-      : await this.prisma.episode.create({
-          data: {
-            titleId,
-            season: slot.season,
-            number: slot.number,
-            cfVideoUid: videoUid,
-            cfStatus: 'uploading',
-          },
-        });
+    // `name` is the Cloudflare-side video label, not the episode's — a slot's
+    // own name is left alone here.
+    const episode = await this.writeSlot(titleId, slot, {
+      videoProvider: 'cloudflare',
+      cfVideoUid: videoUid,
+      cfStatus: 'uploading',
+    });
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
@@ -630,9 +654,14 @@ export class EpisodesService {
   }
 
   /**
-   * Explicitly abandon an in-flight/failed upload: delete the Cloudflare
-   * video (tolerates 404) and return the row to 'pending' so the admin UI
-   * shows a clean upload slot again. Never touches a ready video.
+   * Explicitly abandon an in-flight/failed upload and return the row to
+   * 'pending', so the admin UI shows a clean slot again. Never touches a
+   * ready video.
+   *
+   * Self-hosted episodes are resettable too. Refusing them left a transcode
+   * that had died — a restart mid-encode, or ffmpeg failing — stuck on
+   * 'uploading'/'error' with no way back: syncStatus skips a row with no
+   * cfVideoUid, so nothing healed it and the slot was unusable for good.
    */
   async cancelUpload(episodeId: bigint) {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
@@ -640,15 +669,17 @@ export class EpisodesService {
     if (episode.cfStatus === 'ready') {
       throw new HttpException('This episode is already ready — nothing to cancel.', HttpStatus.CONFLICT);
     }
-    if (episode.videoProvider !== 'cloudflare') {
-      throw new HttpException('Only Cloudflare Stream uploads can be cancelled here.', HttpStatus.BAD_REQUEST);
-    }
     if (episode.cfVideoUid) {
       await this.stream.deleteVideo(episode.cfVideoUid);
     }
     const updated = await this.prisma.episode.update({
       where: { id: episodeId },
-      data: { cfVideoUid: null, cfStatus: 'pending' },
+      // r2Prefix goes too: a half-written ladder is not a video, and leaving
+      // it set would make claimSlot read the empty slot as "already holds a
+      // video" and refuse the retry. videoProvider returns to the default so
+      // the row is indistinguishable from a fresh slot — otherwise the admin
+      // UI keeps hiding the per-row upload input on a slot that is now empty.
+      data: { cfVideoUid: null, r2Prefix: null, cfStatus: 'pending', videoProvider: 'cloudflare' },
     });
     return { ...updated, id: updated.id.toString(), titleId: updated.titleId.toString() };
   }
