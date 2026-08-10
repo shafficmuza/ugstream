@@ -649,9 +649,14 @@ export class EpisodesService {
   }
 
   /**
-   * Explicitly abandon an in-flight/failed upload: delete the Cloudflare
-   * video (tolerates 404) and return the row to 'pending' so the admin UI
-   * shows a clean upload slot again. Never touches a ready video.
+   * Explicitly abandon an in-flight/failed upload and return the row to
+   * 'pending', so the admin UI shows a clean slot again. Never touches a
+   * ready video.
+   *
+   * Self-hosted episodes are resettable too. Refusing them left a transcode
+   * that had died — a restart mid-encode, or ffmpeg failing — stuck on
+   * 'uploading'/'error' with no way back: syncStatus skips a row with no
+   * cfVideoUid, so nothing healed it and the slot was unusable for good.
    */
   async cancelUpload(episodeId: bigint) {
     const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
@@ -659,15 +664,17 @@ export class EpisodesService {
     if (episode.cfStatus === 'ready') {
       throw new HttpException('This episode is already ready — nothing to cancel.', HttpStatus.CONFLICT);
     }
-    if (episode.videoProvider !== 'cloudflare') {
-      throw new HttpException('Only Cloudflare Stream uploads can be cancelled here.', HttpStatus.BAD_REQUEST);
-    }
     if (episode.cfVideoUid) {
       await this.stream.deleteVideo(episode.cfVideoUid);
     }
     const updated = await this.prisma.episode.update({
       where: { id: episodeId },
-      data: { cfVideoUid: null, cfStatus: 'pending' },
+      // r2Prefix goes too: a half-written ladder is not a video, and leaving
+      // it set would make claimSlot read the empty slot as "already holds a
+      // video" and refuse the retry. videoProvider returns to the default so
+      // the row is indistinguishable from a fresh slot — otherwise the admin
+      // UI keeps hiding the per-row upload input on a slot that is now empty.
+      data: { cfVideoUid: null, r2Prefix: null, cfStatus: 'pending', videoProvider: 'cloudflare' },
     });
     return { ...updated, id: updated.id.toString(), titleId: updated.titleId.toString() };
   }

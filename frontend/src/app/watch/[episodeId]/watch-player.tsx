@@ -138,11 +138,26 @@ export function WatchPlayer({
     const handleVideoError = () => reportFatal();
     video.addEventListener('error', handleVideoError);
 
-    video.currentTime = startAt;
+    // Applied on loadedmetadata, not immediately: until the manifest is parsed
+    // the element has readyState 0 and no duration, and assigning currentTime
+    // then is silently discarded — so every resume started from the beginning
+    // and the progress ticker below promptly saved 0 over the real bookmark.
+    let resumed = startAt <= 0;
+    const applyStartAt = () => {
+      if (startAt > 0 && Math.abs(video.currentTime - startAt) > 1) {
+        video.currentTime = startAt;
+      }
+      resumed = true;
+    };
+    video.addEventListener('loadedmetadata', applyStartAt, { once: true });
+    // Metadata can already be there when the element is reused for a new
+    // source (the token-refresh path), where the event has come and gone.
+    if (video.readyState >= 1) applyStartAt();
 
     const reportProgress = () => {
       const token = getAccessToken();
-      if (!token || video.paused) return;
+      // Reporting before the seek lands would overwrite the saved position.
+      if (!token || video.paused || !resumed) return;
       apiFetch(`/episodes/${episodeId}/progress`, {
         method: 'PUT',
         token,
@@ -163,6 +178,7 @@ export function WatchPlayer({
       clearInterval(interval);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('playing', enterImmersiveMode);
+      video.removeEventListener('loadedmetadata', applyStartAt);
       video.removeEventListener('contextmenu', blockContextMenu);
       video.removeEventListener('error', handleVideoError);
       document.removeEventListener('fullscreenchange', restoreOrientation);

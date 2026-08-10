@@ -442,6 +442,28 @@ describe('series upload flow (end to end)', () => {
       expect(db.rows.every((r) => r.cfStatus === 'ready' && r.r2Prefix)).toBe(true);
     });
 
+    it('a dead self-hosted transcode can be reset and retried', async () => {
+      // The stuck-on-processing dead end: a transcode killed by a restart is
+      // marked 'error' at boot, but cancel-upload used to refuse anything
+      // that was not Cloudflare, so the row could never be cleared and the
+      // slot was lost for good.
+      const { service, db } = makeService();
+      await service.transcode4kFromR2(TITLE, 'sources/x.mkv', { season: 1, number: 1 });
+      db.rows[0].cfStatus = 'error'; // what onModuleInit does after a restart
+
+      const reset = await service.cancelUpload(db.rows[0].id);
+
+      expect(reset.cfStatus).toBe('pending');
+      expect(reset.r2Prefix).toBeNull(); // else claimSlot reads it as holding a video
+      expect(reset.videoProvider).toBe('cloudflare'); // a clean slot again
+
+      // And the slot genuinely accepts a fresh upload.
+      const retried = await service.registerR2File(TITLE, 'files/x.mp4', { season: 1, number: 1 });
+      expect(retried.id).toBe(reset.id);
+      expect(db.rows).toHaveLength(1);
+      expect(db.rows[0].cfStatus).toBe('ready');
+    });
+
     it('an upload that carries its own name overwrites the slot label', async () => {
       const { service, db } = makeService();
       await service.createForTitle(TITLE, { season: 1, number: 1, name: 'Placeholder' });

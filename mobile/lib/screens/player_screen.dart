@@ -81,6 +81,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _lastPositionSecs = 0;
   bool _recovering = false;
   int _recoveryAttempts = 0;
+  /// True while a resume seek is still settling. Progress saves are suppressed
+  /// until it clears so a half-finished resume cannot overwrite the bookmark.
+  bool _resumePending = false;
 
   @override
   void initState() {
@@ -95,12 +98,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final v = VideoPlayerController.networkUrl(Uri.parse(url));
     _video = v;
     await v.initialize();
-    if (startAtSecs > 0) await v.seekTo(Duration(seconds: startAtSecs));
-    await v.play();
+    await _resumeTo(v, startAtSecs);
     v.addListener(_onTick);
     if (mounted) setState(() => _ready = true);
     _scheduleHide();
     _progressTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _saveProgress());
+  }
+
+  /// Start playing at [startAtSecs], confirming the player actually got there.
+  ///
+  /// Seeking straight after `initialize()` silently failed on iOS: the item is
+  /// ready, but an HLS stream's seekable range is not populated yet, so
+  /// AVPlayer drops the seek and starts from zero. That alone would only be an
+  /// annoyance — what made it destructive is the 15s progress timer, which
+  /// then saved the new position over the real bookmark. One failed resume
+  /// erased where the viewer had got to, so the episode could never be resumed
+  /// again.
+  ///
+  /// Playing first gives AVPlayer a live timeline to seek within, and the
+  /// landing position is verified rather than assumed: ExoPlayer honours the
+  /// first attempt, AVPlayer occasionally needs another.
+  Future<void> _resumeTo(VideoPlayerController v, int startAtSecs) async {
+    if (startAtSecs <= 0) {
+      await v.play();
+      return;
+    }
+    // Hold off the progress timer until the seek has landed, so a slow or
+    // failed resume can never overwrite the saved position with ~0.
+    _resumePending = true;
+    final target = Duration(seconds: startAtSecs);
+    try {
+      await v.play();
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await v.seekTo(target);
+        // A seek lands on the nearest decodable frame, so exact equality never
+        // holds on HLS — anything within a segment of the target is a success.
+        final landed = (await v.position) ?? Duration.zero;
+        if ((landed - target).abs() <= const Duration(seconds: 10)) break;
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      _lastPositionSecs = startAtSecs;
+    } finally {
+      // Always clear it: leaving it set on a throw would silently disable
+      // progress saving for the rest of the sitting.
+      _resumePending = false;
+    }
   }
 
   void _onTick() {
@@ -154,6 +196,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _saveProgress() {
+    // Never report a position while a resume is still settling — that is the
+    // window in which a failed seek would otherwise persist ~0 over a real
+    // bookmark and lose the viewer's place permanently.
+    if (_resumePending) return;
     final pos = _video?.value.position.inSeconds ?? 0;
     if (pos > 0) _catalog.saveProgress(widget.episodeId, pos).catchError((_) {});
   }

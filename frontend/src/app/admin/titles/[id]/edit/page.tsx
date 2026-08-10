@@ -586,7 +586,10 @@ function EpisodesSection({
               <td style={tdStyle}>
                 {ep.cfStatus}
                 <span style={{ opacity: 0.55, fontSize: 11, marginLeft: 6 }}>{providerLabel(ep.videoProvider)}</span>
-                {ep.cfStatus === 'uploading' && uploadingId !== ep.id && ep.videoProvider === 'cloudflare' && (
+                {/* Also offered for self-hosted rows and for 'error': a
+                    transcode killed by a restart leaves a status nothing
+                    else can clear, and without a reset the slot is dead. */}
+                {(ep.cfStatus === 'uploading' || ep.cfStatus === 'error') && uploadingId !== ep.id && (
                   <button
                     type="button"
                     onClick={() => resetUpload(ep.id)}

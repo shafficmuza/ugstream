@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { mkdtemp, rm, readdir, stat } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -27,8 +27,12 @@ const LADDER: Rung[] = [
 ];
 
 @Injectable()
-export class TranscodeService {
+export class TranscodeService implements OnModuleInit {
   private readonly logger = new Logger(TranscodeService.name);
+
+  /** Jobs waiting their turn. Drained one at a time — see `enqueue`. */
+  private readonly queue: { episodeId: bigint; run: () => Promise<void> }[] = [];
+  private draining = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -36,18 +40,85 @@ export class TranscodeService {
   ) {}
 
   /**
-   * Fire-and-forget: transcode a source URL into a 4K HLS ladder and upload
-   * it to R2 under the episode's prefix, updating status as it goes. Rungs
-   * above the source resolution are skipped by ffmpeg's scale (never
-   * upscales). Long-running — invoked detached from the request.
+   * Reclaim transcodes orphaned by a restart.
+   *
+   * A job lives only in this process's memory, so a deploy, a pm2 restart or
+   * an OOM kill mid-encode takes it with no chance to record the failure —
+   * the row then claims 'uploading' forever. Nothing else heals it either:
+   * syncStatus returns early without a cfVideoUid, which a self-hosted
+   * episode never has. Any r2_hls row still 'uploading' at boot therefore
+   * belongs to a process that no longer exists (registerR2Hls writes 'ready'
+   * directly, so an in-flight transcode is the only way to be in this
+   * state). Marking it 'error' gives the admin a true status and a row they
+   * can reset and retry.
+   *
+   * Safe because the backend runs as a single pm2 process (ecosystem.config.js
+   * declares no cluster instances) — there is never a peer whose live job
+   * this could cancel.
+   */
+  async onModuleInit(): Promise<void> {
+    const { count } = await this.prisma.episode
+      .updateMany({
+        where: { videoProvider: 'r2_hls', cfStatus: 'uploading' },
+        data: { cfStatus: 'error' },
+      })
+      .catch(() => ({ count: 0 }));
+    if (count > 0) {
+      this.logger.warn(
+        `Marked ${count} self-hosted transcode(s) as failed: they were still ` +
+          `'uploading' at startup, so the process running them died. Reset and retry them.`,
+      );
+    }
+  }
+
+  /**
+   * Queue a transcode of a source URL into a 4K HLS ladder uploaded to R2
+   * under the episode's prefix. Rungs above the source resolution are skipped
+   * by ffmpeg's scale (never upscales). Long-running — invoked detached from
+   * the request, so this returns as soon as the job is queued.
    */
   startTranscode(episodeId: bigint, sourceUrl: string, cleanupKey?: string): void {
-    this.runTranscode(episodeId, sourceUrl, cleanupKey).catch((err) => {
-      this.logger.error(`Transcode failed for episode ${episodeId}: ${err?.message ?? err}`);
-      this.prisma.episode
-        .update({ where: { id: episodeId }, data: { cfStatus: 'error' } })
-        .catch(() => undefined);
-    });
+    this.enqueue(episodeId, () => this.runTranscode(episodeId, sourceUrl, cleanupKey));
+  }
+
+  /**
+   * Run transcodes strictly one at a time.
+   *
+   * Each job is a single ffmpeg encoding four rungs at once, up to 2160p at
+   * 16 Mbps. Publishing a season used to start one per episode simultaneously
+   * — six of those will saturate every core, fill the scratch directory and
+   * invite the OOM killer, so every episode crawls or dies and the whole
+   * season sits at 'uploading'. Serialising makes one episode finish before
+   * the next begins: the same total work, but it completes.
+   */
+  private enqueue(episodeId: bigint, run: () => Promise<void>): void {
+    this.queue.push({ episodeId, run });
+    this.logger.log(
+      `Queued transcode for episode ${episodeId} (${this.queue.length} waiting` +
+        `${this.draining ? ', one running' : ''}).`,
+    );
+    void this.drain();
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      let job = this.queue.shift();
+      while (job) {
+        try {
+          await job.run();
+        } catch (err: any) {
+          this.logger.error(`Transcode failed for episode ${job.episodeId}: ${err?.message ?? err}`);
+          await this.prisma.episode
+            .update({ where: { id: job.episodeId }, data: { cfStatus: 'error' } })
+            .catch(() => undefined);
+        }
+        job = this.queue.shift();
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   private async runTranscode(episodeId: bigint, sourceUrl: string, cleanupKey?: string): Promise<void> {
