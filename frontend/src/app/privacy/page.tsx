@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="7 August 2026">
+    <LegalPage title="Privacy Policy" updated="10 August 2026">
       <P>
         This policy explains what {OPERATOR.brand} (&ldquo;we&rdquo;, &ldquo;us&rdquo;), operated by{' '}
         {OPERATOR.company} of {OPERATOR.cityState}, collects about you, why, and what we do with it. It
@@ -151,12 +151,47 @@ export default function PrivacyPage() {
         </li>
       </UL>
 
-      <H2>Children</H2>
+      <H2>Children and family viewing</H2>
       <P>
-        {OPERATOR.brand} is not intended for children under 13, and we do not knowingly collect
-        their information. The Kids section contains titles suitable for younger viewers but is not
-        a separate account type. If you believe a child has given us their information, contact us
-        and we will remove it.
+        {OPERATOR.brand} carries a large library of content made for children, including
+        educational videos, and we expect children to watch it. Everything below describes how we
+        keep that safe.
+      </P>
+      <P>
+        <strong>Accounts belong to adults.</strong> An account can only be created by a parent,
+        guardian or other adult, because creating one requires a mobile phone number and, for a
+        subscription, a payment method. Children watch using an adult&rsquo;s account. We do not ask
+        children for personal information, and we do not knowingly collect any directly from a
+        child. If a child has given us information, contact us and we will delete it.
+      </P>
+      <P>
+        <strong>What we do not do.</strong> We show no advertising of any kind, so nothing about a
+        child&rsquo;s viewing is used for advertising, profiling or building an advertising
+        profile. We do not sell personal information. We do not use third-party advertising
+        networks or advertising identifiers, and we do not share viewing data with data brokers.
+      </P>
+      <P>
+        <strong>What we record when a child watches.</strong> The same as for anyone else: which
+        titles were played and how far through, so that Continue Watching works. That record
+        belongs to the account holder&rsquo;s account, not to a named child, and the account holder
+        can clear it or ask us to delete it at any time.
+      </P>
+      <P>
+        <strong>Kids content.</strong> The Kids section is limited to titles reviewed as suitable
+        for younger viewers. It is a content filter, not a separate account, so an adult remains
+        responsible for the account and for what a child watches. There is no chat, no comments,
+        no user-uploaded content and no way for one viewer to contact another.
+      </P>
+      <P>
+        <strong>Purchases.</strong> Subscriptions can only be started by an account holder using
+        their own Mobile Money account or payment card, and require confirmation outside the app.
+        A child cannot make a purchase on their own.
+      </P>
+      <P>
+        <strong>Parents:</strong> to see or delete everything held for your account, or to close it
+        entirely, email us at{' '}
+        <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a> from the address on the account or
+        contact us on the number below.
       </P>
 
       <H2>Changes</H2>
