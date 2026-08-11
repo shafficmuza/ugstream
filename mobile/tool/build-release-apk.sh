@@ -27,6 +27,12 @@ OUT=/root/ugstream/backend/uploads/ham-watch.apk
 
 cd "$APP"
 flutter pub get
+
+# Regenerate launcher icons from brand sources. android/ is recreated by the
+# build, so icons written into it by hand are lost and the app ships with the
+# default Flutter logo — generating here makes that impossible to forget.
+dart run flutter_launcher_icons
+
 flutter test
 flutter build apk --release --dart-define=API_BASE=https://ham.sentepos.com/api/v1
 
