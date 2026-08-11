@@ -202,6 +202,31 @@ export class CloudflareStreamService {
    * runtime. Stored on Cloudflare, so every later thumbnail request gets that
    * frame without us having to pass a timestamp or remember one.
    */
+  /**
+   * Rename a video on Cloudflare's side. Only cosmetic to playback, but it is
+   * what the Stream dashboard lists, so it decides whether the library can be
+   * searched or reconciled against our own records at all.
+   */
+  async setVideoName(videoUid: string, name: string): Promise<void> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ meta: { name } }),
+      },
+    );
+    const json = await res.json().catch(() => null);
+    if (!json?.success) {
+      throw new InternalServerErrorException(
+        `Cloudflare rename failed: ${JSON.stringify(json?.errors ?? res.status)}`,
+      );
+    }
+  }
+
   async setThumbnailTimestampPct(videoUid: string, pct: number): Promise<void> {
     const clamped = Math.min(1, Math.max(0, pct));
     const res = await fetch(

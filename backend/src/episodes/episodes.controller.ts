@@ -136,6 +136,12 @@ export class EpisodesController {
   }
 
   @UseGuards(AdminGuard)
+  @Post('admin/stream/rename-from-catalogue')
+  renameStreamVideos() {
+    return this.episodes.renameStreamVideosFromCatalogue();
+  }
+
+  @UseGuards(AdminGuard)
   @Post('admin/stream/cleanup-orphans')
   cleanupOrphans() {
     return this.episodes.cleanupOrphans();

@@ -494,6 +494,37 @@ export class EpisodesService {
   }
 
   /**
+   * What a video is called on Cloudflare's side.
+   *
+   * The import form sends no name, so every video landed there as the literal
+   * fallback string — 142 of them called "Imported video", which makes the
+   * Stream dashboard useless for finding anything, and leaves no way to tell
+   * which video belongs to which episode when reconciling by hand.
+   *
+   * Derived from the title instead: "The Asset — S1E2" for a series, the
+   * title's name for a movie, with any episode name appended. A caller that
+   * passes a real name of its own still wins.
+   */
+  private async streamLabel(
+    titleId: bigint,
+    season: number,
+    number: number,
+    provided?: string,
+  ): Promise<string> {
+    const given = provided?.trim();
+    if (given && given.toLowerCase() !== 'imported video') return given;
+
+    const title = await this.prisma.title
+      .findUnique({ where: { id: titleId }, select: { name: true, kind: true } })
+      .catch(() => null);
+    if (!title) return given || 'Imported video';
+
+    return title.kind === 'series'
+      ? `${title.name} — S${season}E${number}`
+      : title.name;
+  }
+
+  /**
    * The episode row an ingest should write into: an existing EMPTY slot if the
    * admin already created one, otherwise a free slot to create.
    *
@@ -573,7 +604,8 @@ export class EpisodesService {
     // admin created in advance is filled rather than refused.
     const slot = await this.claimSlot(titleId, dto.season, dto.number);
     this.logger.log(`Importing S${slot.season}E${slot.number} of title ${titleId} from ${url}`);
-    const { videoUid } = await this.stream.copyFromUrl(url, name);
+    const label = await this.streamLabel(titleId, slot.season, slot.number, name);
+    const { videoUid } = await this.stream.copyFromUrl(url, label);
 
     // `name` is the Cloudflare-side video label, not the episode's — a slot's
     // own name is left alone here.
@@ -817,6 +849,46 @@ export class EpisodesService {
       thumbnailUrl: updated.thumbnailUrl,
       candidates,
     };
+  }
+
+  /**
+   * Re-label every Cloudflare video from the catalogue it belongs to, so the
+   * Stream dashboard reads as the library rather than 142 rows called
+   * "Imported video". Renaming is metadata only — playback, thumbnails and
+   * the video id are untouched.
+   */
+  async renameStreamVideosFromCatalogue(): Promise<{ renamed: number; failed: number }> {
+    const episodes = await this.prisma.episode.findMany({
+      where: { videoProvider: 'cloudflare', cfVideoUid: { not: null } },
+      select: {
+        id: true,
+        season: true,
+        number: true,
+        name: true,
+        cfVideoUid: true,
+        title: { select: { name: true, kind: true } },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    let renamed = 0;
+    let failed = 0;
+    for (const ep of episodes) {
+      const base =
+        ep.title.kind === 'series'
+          ? `${ep.title.name} — S${ep.season}E${ep.number}`
+          : ep.title.name;
+      const label = ep.name?.trim() ? `${base} · ${ep.name.trim()}` : base;
+      try {
+        await this.stream.setVideoName(ep.cfVideoUid!, label);
+        renamed++;
+      } catch (e: any) {
+        failed++;
+        this.logger.warn(`Could not rename video for episode ${ep.id}: ${e?.message ?? e}`);
+      }
+    }
+    this.logger.log(`Renamed ${renamed} Cloudflare videos from the catalogue (${failed} failed)`);
+    return { renamed, failed };
   }
 
   /** Same, for every ready Cloudflare episode of a title. */
