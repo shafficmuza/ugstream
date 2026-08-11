@@ -156,6 +156,7 @@ function EpisodesSection({
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [thumbBusy, setThumbBusy] = useState<string | null>(null);
 
   // Closing the tab mid-upload silently kills the transfer (the tus URL
   // lives only in this tab) — warn before letting the admin leave.
@@ -350,6 +351,41 @@ function EpisodesSection({
   }
 
   /** Abandon a stuck/failed upload and return the row to a clean slot. */
+  /** Choose a scene from the episode as its thumbnail, instead of Cloudflare's
+   *  fixed default frame — which is routinely a fade-in or a studio card. */
+  async function pickThumbnail(episodeId: string) {
+    const token = getAccessToken();
+    if (!token) return;
+    setThumbBusy(episodeId);
+    setError(null);
+    try {
+      await apiFetch(`/admin/titles/${titleId}/episodes/${episodeId}/thumbnail/auto`, {
+        method: 'POST',
+        token,
+      });
+      onChange();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not pick a thumbnail.');
+    } finally {
+      setThumbBusy(null);
+    }
+  }
+
+  async function pickAllThumbnails() {
+    const token = getAccessToken();
+    if (!token) return;
+    setThumbBusy('all');
+    setError(null);
+    try {
+      await apiFetch(`/admin/titles/${titleId}/thumbnails/auto`, { method: 'POST', token });
+      onChange();
+    } catch (e: any) {
+      setError(e.message ?? 'Could not pick thumbnails.');
+    } finally {
+      setThumbBusy(null);
+    }
+  }
+
   async function resetUpload(episodeId: string, opts?: { silent?: boolean }) {
     const token = getAccessToken();
     if (!token) return;
@@ -392,7 +428,20 @@ function EpisodesSection({
 
   return (
     <div>
-      <h2 style={{ fontSize: 18, marginBottom: 6 }}>{kind === 'series' ? 'Episodes' : 'Video'}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <h2 style={{ fontSize: 18 }}>{kind === 'series' ? 'Episodes' : 'Video'}</h2>
+        {episodes.some((e) => e.cfStatus === 'ready' && e.videoProvider !== 'r2_hls' && e.videoProvider !== 'r2_file') && (
+          <button
+            className="btn"
+            style={{ fontSize: 12, padding: '5px 12px' }}
+            onClick={pickAllThumbnails}
+            disabled={thumbBusy != null}
+            title="Sample scenes from every ready episode and use the best frame of each"
+          >
+            {thumbBusy === 'all' ? 'Picking thumbnails…' : 'Pick thumbnails from scenes'}
+          </button>
+        )}
+      </div>
       <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
         Pick the option that matches the file you have. Not sure? Use option 1 — it accepts almost
         any format.
@@ -484,18 +533,54 @@ function EpisodesSection({
             in .mp4/.mkv). The server fetches it — ideal for very large files since nothing uploads
             from your browser. Page links (YouTube, Google Drive, Dropbox) will not work.
           </p>
-          <form onSubmit={importVideoFromUrl} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              style={{ ...inputStyle, flex: 1, minWidth: 220, marginBottom: 0 }}
-              type="url"
-              placeholder="https://example.com/movie.mp4"
-              value={importUrl}
-              onChange={(e) => setImportUrl(e.target.value)}
-            />
+          <form onSubmit={importVideoFromUrl} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Season and episode belong HERE for a series, not only in the
+                "+ Add episode" form. Without them this card silently imported
+                every link as S1E1, so the second episode collided with the
+                first and a series could not be loaded from links at all. */}
+            {kind === 'series' && (
+              <>
+                <div>
+                  <label style={labelStyle}>Season</label>
+                  <input
+                    style={{ ...inputStyle, width: 80, marginBottom: 0 }}
+                    value={season}
+                    onChange={(e) => setSeason(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Episode</label>
+                  <input
+                    style={{ ...inputStyle, width: 80, marginBottom: 0 }}
+                    value={number}
+                    onChange={(e) => {
+                      setNumberTouched(true);
+                      setNumber(e.target.value);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            <div style={{ flex: 1, minWidth: 220 }}>
+              {kind === 'series' && <label style={labelStyle}>Direct link to the episode file</label>}
+              <input
+                style={{ ...inputStyle, width: '100%', marginBottom: 0 }}
+                type="url"
+                placeholder={kind === 'series' ? 'https://example.com/episode-1.mkv' : 'https://example.com/movie.mp4'}
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+              />
+            </div>
             <button className="btn" type="submit" disabled={importing || !importUrl.trim()}>
               {importing ? 'Importing…' : 'Import'}
             </button>
           </form>
+          {kind === 'series' && (
+            <p style={{ ...cardTextStyle, marginTop: 10, marginBottom: 0, opacity: 0.7 }}>
+              Import one episode at a time, changing the episode number for each. An episode you
+              already created above is filled in place rather than duplicated.
+            </p>
+          )}
         </div>
 
         <div style={cardStyle}>
@@ -597,6 +682,17 @@ function EpisodesSection({
                     style={{ marginLeft: 8, fontSize: 11, background: 'none', border: '1px solid #666', color: '#ccc', borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
                   >
                     Reset
+                  </button>
+                )}
+                {ep.cfStatus === 'ready' && ep.videoProvider !== 'r2_hls' && ep.videoProvider !== 'r2_file' && (
+                  <button
+                    type="button"
+                    onClick={() => pickThumbnail(ep.id)}
+                    disabled={thumbBusy != null}
+                    title="Sample scenes from this episode and use the best frame as its thumbnail"
+                    style={{ marginLeft: 8, fontSize: 11, background: 'none', border: '1px solid #666', color: '#ccc', borderRadius: 4, padding: '1px 6px', cursor: 'pointer' }}
+                  >
+                    {thumbBusy === ep.id ? 'Picking…' : 'Pick thumbnail'}
                   </button>
                 )}
               </td>

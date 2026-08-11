@@ -60,6 +60,34 @@ export class EpisodesController {
   }
 
   @UseGuards(StaffGuard)
+  @Post('admin/titles/:titleId/episodes/:episodeId/thumbnail/auto')
+  async autoThumbnail(
+    @CurrentUser() auth: AuthContext,
+    @Param('titleId') titleId: string,
+    @Param('episodeId') episodeId: string,
+  ) {
+    const r = await this.episodes.autoPickThumbnail(BigInt(episodeId));
+    this.activity.log(auth.userId, 'thumbnail_picked', 'Picked an episode thumbnail', BigInt(titleId));
+    return r;
+  }
+
+  @UseGuards(StaffGuard)
+  @Post('admin/titles/:titleId/thumbnails/auto')
+  async autoThumbnailsForTitle(
+    @CurrentUser() auth: AuthContext,
+    @Param('titleId') titleId: string,
+  ) {
+    const r = await this.episodes.autoPickThumbnailsForTitle(BigInt(titleId));
+    this.activity.log(
+      auth.userId,
+      'thumbnail_picked',
+      `Picked thumbnails for ${r.total} episodes`,
+      BigInt(titleId),
+    );
+    return r;
+  }
+
+  @UseGuards(StaffGuard)
   @Post('admin/titles/:titleId/episodes/:episodeId/cancel-upload')
   async cancelUpload(
     @CurrentUser() auth: AuthContext,

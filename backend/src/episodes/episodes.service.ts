@@ -7,6 +7,7 @@ import { EntitlementsService } from '../common/entitlements.service';
 import { CloudflareStreamService } from './cloudflare-stream.service';
 import { R2Service } from '../media-storage/r2.service';
 import { TranscodeService } from './transcode.service';
+import { ThumbnailPickerService } from './thumbnail-picker.service';
 import { StreamLeaseService } from '../playback/stream-lease.service';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class EpisodesService {
     private readonly stream: CloudflareStreamService,
     private readonly r2: R2Service,
     private readonly transcode: TranscodeService,
+    private readonly picker: ThumbnailPickerService,
     private readonly leases: StreamLeaseService,
     private readonly config: ConfigService,
   ) {}
@@ -721,11 +723,119 @@ export class EpisodesService {
     return { ...updated, id: updated.id.toString(), titleId: updated.titleId.toString() };
   }
 
-  async markReady(videoUid: string, durationSecs: number, thumbnailUrl: string) {
+  async markReady(videoUid: string, durationSecs: number, _thumbnailUrl: string) {
+    // Cloudflare's own thumbnail URL is deliberately ignored. It is the
+    // unsigned form, and these videos require signed URLs, so storing it left
+    // every episode showing a broken image. Point at our own endpoint instead:
+    // it signs on demand, so the link never expires and never needs rewriting.
+    const rows = await this.prisma.episode.findMany({
+      where: { cfVideoUid: videoUid },
+      select: { id: true },
+    });
     await this.prisma.episode.updateMany({
       where: { cfVideoUid: videoUid },
-      data: { cfStatus: 'ready', durationSecs, thumbnailUrl },
+      data: { cfStatus: 'ready', durationSecs },
     });
+    for (const row of rows) {
+      await this.prisma.episode.update({
+        where: { id: row.id },
+        data: { thumbnailUrl: `/api/v1/episodes/${row.id}/thumbnail` },
+      });
+    }
+  }
+
+  /**
+   * A signed still for an episode, for the thumbnail endpoint to redirect to.
+   * Tokens are minted per video and cached, because a season page asks for one
+   * per episode and each mint is a round trip to Cloudflare.
+   */
+  private readonly thumbTokens = new Map<string, { token: string; expiresAt: number }>();
+
+  async signedThumbnailUrl(episodeId: bigint): Promise<string | null> {
+    const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
+    if (!episode?.cfVideoUid || episode.videoProvider !== 'cloudflare') return null;
+
+    const now = Date.now();
+    const cached = this.thumbTokens.get(episode.cfVideoUid);
+    let token = cached && cached.expiresAt > now + 60_000 ? cached.token : null;
+    if (!token) {
+      const ttl = 3600;
+      token = await this.stream.signPlaybackToken(episode.cfVideoUid, ttl);
+      this.thumbTokens.set(episode.cfVideoUid, { token, expiresAt: now + ttl * 1000 });
+    }
+    return this.stream.thumbnailUrl(token, { height: 360 });
+  }
+
+  /**
+   * Choose the still for an episode by looking at the video rather than
+   * trusting Cloudflare's fixed default frame, which is routinely a fade-in or
+   * a studio card. The winning moment is stored on Cloudflare itself, so every
+   * later thumbnail request returns it with no timestamp to remember.
+   */
+  async autoPickThumbnail(episodeId: bigint) {
+    const episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
+    if (!episode) throw new NotFoundException('Episode not found.');
+    if (episode.videoProvider !== 'cloudflare' || !episode.cfVideoUid) {
+      throw new HttpException(
+        'Scene picking currently covers Cloudflare-hosted episodes only.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (episode.cfStatus !== 'ready') {
+      throw new HttpException(
+        'This episode is not ready yet, so there are no frames to choose from.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const duration = episode.durationSecs ?? 0;
+    if (duration < 5) {
+      throw new HttpException('This episode has no usable duration.', HttpStatus.CONFLICT);
+    }
+
+    const token = await this.stream.signPlaybackToken(episode.cfVideoUid, 900);
+    const { best, candidates } = await this.picker.pickBestFrame(
+      (timeSecs) => this.stream.thumbnailUrl(token, { timeSecs, height: 360 }),
+      duration,
+    );
+    if (!best) {
+      throw new HttpException('No usable frame was found.', HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    await this.stream.setThumbnailTimestampPct(episode.cfVideoUid, best.timeSecs / duration);
+    const updated = await this.prisma.episode.update({
+      where: { id: episodeId },
+      data: { thumbnailUrl: `/api/v1/episodes/${episodeId}/thumbnail` },
+    });
+    this.logger.log(
+      `Episode ${episodeId} thumbnail set to ${best.timeSecs}s ` +
+        `(${best.bytes}B, brightness ${best.brightness.toFixed(1)}), ` +
+        `${candidates.filter((c) => c.rejected).length}/${candidates.length} candidates rejected`,
+    );
+    return {
+      episodeId: episodeId.toString(),
+      chosenTimeSecs: best.timeSecs,
+      thumbnailUrl: updated.thumbnailUrl,
+      candidates,
+    };
+  }
+
+  /** Same, for every ready Cloudflare episode of a title. */
+  async autoPickThumbnailsForTitle(titleId: bigint) {
+    const episodes = await this.prisma.episode.findMany({
+      where: { titleId, cfStatus: 'ready', videoProvider: 'cloudflare' },
+      orderBy: [{ season: 'asc' }, { number: 'asc' }],
+      select: { id: true, season: true, number: true },
+    });
+    const results: Array<{ season: number; number: number; chosenTimeSecs?: number; error?: string }> = [];
+    for (const ep of episodes) {
+      try {
+        const r = await this.autoPickThumbnail(ep.id);
+        results.push({ season: ep.season, number: ep.number, chosenTimeSecs: r.chosenTimeSecs });
+      } catch (e: any) {
+        results.push({ season: ep.season, number: ep.number, error: e?.message ?? 'failed' });
+      }
+    }
+    return { total: episodes.length, results };
   }
 
   async markError(videoUid: string) {

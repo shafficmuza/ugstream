@@ -190,6 +190,7 @@ function makeService() {
     cf as any,
     r2 as any,
     transcode as any,
+    { pickBestFrame: jest.fn() } as any, // thumbnail picker
     { touch: jest.fn(), acquire: jest.fn() } as any, // leases
     { get: jest.fn() } as any, // config
   );

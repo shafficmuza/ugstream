@@ -181,6 +181,48 @@ export class CloudflareStreamService {
     return json.result.token;
   }
 
+  /**
+   * A still from the video, at an optional timestamp.
+   *
+   * Takes the signed token in place of the uid for exactly the same reason the
+   * manifest does: these videos are created with requireSignedURLs, which
+   * covers thumbnails too. The unsigned form Cloudflare reports in its API
+   * response answers 401, so storing that — which is what we were doing —
+   * leaves every episode still a broken image.
+   */
+  thumbnailUrl(token: string, opts: { timeSecs?: number; height?: number } = {}): string {
+    const params = new URLSearchParams();
+    if (opts.timeSecs != null) params.set('time', `${Math.max(0, Math.round(opts.timeSecs))}s`);
+    params.set('height', String(opts.height ?? 360));
+    return `https://customer-${this.config.get('CLOUDFLARE_CUSTOMER_CODE')}.cloudflarestream.com/${token}/thumbnails/thumbnail.jpg?${params}`;
+  }
+
+  /**
+   * Make a chosen moment the video's own default still, as a fraction of its
+   * runtime. Stored on Cloudflare, so every later thumbnail request gets that
+   * frame without us having to pass a timestamp or remember one.
+   */
+  async setThumbnailTimestampPct(videoUid: string, pct: number): Promise<void> {
+    const clamped = Math.min(1, Math.max(0, pct));
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thumbnailTimestampPct: clamped }),
+      },
+    );
+    const json = await res.json().catch(() => null);
+    if (!json?.success) {
+      throw new InternalServerErrorException(
+        `Cloudflare thumbnail timestamp failed: ${JSON.stringify(json?.errors ?? res.status)}`,
+      );
+    }
+  }
+
   hlsUrl(videoUid: string, token: string): string {
     return `https://customer-${this.config.get('CLOUDFLARE_CUSTOMER_CODE')}.cloudflarestream.com/${token}/manifest/video.m3u8`;
   }
