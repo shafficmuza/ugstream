@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Episode, StreamStatus } from '@prisma/client';
@@ -11,6 +11,8 @@ import { StreamLeaseService } from '../playback/stream-lease.service';
 
 @Injectable()
 export class EpisodesService {
+  private readonly logger = new Logger(EpisodesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
@@ -568,6 +570,7 @@ export class EpisodesService {
     // doesn't leave an orphaned video sitting in Stream. An empty slot the
     // admin created in advance is filled rather than refused.
     const slot = await this.claimSlot(titleId, dto.season, dto.number);
+    this.logger.log(`Importing S${slot.season}E${slot.number} of title ${titleId} from ${url}`);
     const { videoUid } = await this.stream.copyFromUrl(url, name);
 
     // `name` is the Cloudflare-side video label, not the episode's — a slot's
@@ -577,6 +580,10 @@ export class EpisodesService {
       cfVideoUid: videoUid,
       cfStatus: 'uploading',
     });
+    this.logger.log(
+      `Cloudflare accepted the import for S${slot.season}E${slot.number} as video ${videoUid}. ` +
+        `It now has to download the file itself — watch for the ready/missing line from syncStatus.`,
+    );
     return { ...episode, id: episode.id.toString(), titleId: episode.titleId.toString() };
   }
 
@@ -593,6 +600,16 @@ export class EpisodesService {
     ]);
     const known = new Set(episodes.map((e) => e.cfVideoUid).filter(Boolean) as string[]);
     const orphans = cfVideos.filter((v) => !known.has(v.uid));
+    if (orphans.length) {
+      // Named individually because this is destructive and irreversible, and
+      // because an import that is mid-flight is briefly indistinguishable
+      // from an orphan: the video exists on Cloudflare for the moment
+      // between copyFromUrl returning and the episode row being written.
+      this.logger.warn(
+        `Deleting ${orphans.length} Cloudflare video(s) not referenced by any episode: ` +
+          orphans.map((v) => `${v.uid} (${v.state})`).join(', '),
+      );
+    }
     for (const v of orphans) {
       await this.stream.deleteVideo(v.uid);
     }
@@ -616,22 +633,42 @@ export class EpisodesService {
     if (!status) {
       return episode; // the Cloudflare check itself failed — decide nothing
     }
+    const where = `S${episode.season}E${episode.number} (episode ${episode.id}, video ${episode.cfVideoUid})`;
+
     if (status.ready) {
+      this.logger.log(`${where} is ready on Cloudflare (${status.durationSecs}s).`);
       await this.markReady(episode.cfVideoUid, status.durationSecs, status.thumbnailUrl);
     } else if (status.errored) {
+      this.logger.error(`${where} failed to encode on Cloudflare. Delete it and re-import.`);
       await this.markError(episode.cfVideoUid);
     } else if (status.missing || this.uploadIsDead(status)) {
       // The upload will never arrive: the Cloudflare video vanished
       // (expired placeholder), or it has sat in 'pendingupload' far longer
       // than any live browser upload survives. Reclaim the slot so the row
       // stops claiming "uploading" forever and the admin can retry.
+      //
+      // Logged loudly because this silently undoes an import that looked
+      // like it worked: the row goes back to an empty slot with no video and
+      // no explanation, which is indistinguishable from never having tried.
+      // Nine episodes sat in exactly that state with nothing to show why.
+      this.logger.warn(
+        status.missing
+          ? `${where} no longer exists on Cloudflare — the video was deleted there ` +
+              `(check "cleanup orphans", or deletion from the Cloudflare dashboard). ` +
+              `Resetting the slot to empty.`
+          : `${where} never received any bytes and is older than 24h — the upload is ` +
+              `dead and cannot resume. Resetting the slot to empty.`,
+      );
       await this.stream.deleteVideo(episode.cfVideoUid);
       await this.prisma.episode.update({
         where: { id: episode.id },
         data: { cfVideoUid: null, cfStatus: 'pending' },
       });
     } else {
-      return episode; // still genuinely pending
+      // Genuinely still working: 'downloading' for a URL import, 'queued' or
+      // 'inprogress' while Cloudflare encodes.
+      this.logger.log(`${where} still in progress on Cloudflare (state: ${status.state}).`);
+      return episode;
     }
 
     return this.prisma.episode.findUniqueOrThrow({ where: { id: episode.id } });
