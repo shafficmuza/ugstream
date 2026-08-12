@@ -47,6 +47,32 @@ export function readRefreshCookie(cookieHeader: string | undefined): string | nu
   return null;
 }
 
+/**
+ * A non-secret hint saying which catalogue this account is on.
+ *
+ * The website's catalogue pages are server-rendered, so the browser's access
+ * token is not available while Next builds them — which is why a tester still
+ * saw the live catalogue on the web no matter what the admin toggled. This
+ * cookie travels with the page request and lets the server pick the right
+ * endpoint.
+ *
+ * Deliberately only a hint. It decides what is DISPLAYED; it grants nothing.
+ * Playback is checked against the account itself, so forging this cookie shows
+ * a different list and nothing more. Refreshed on every token refresh, so a
+ * change of flag takes effect within the access token's lifetime.
+ */
+const AUDIENCE_COOKIE = 'ugs_aud';
+
+function setAudienceCookie(res: Response, isTester: boolean) {
+  res.cookie(AUDIENCE_COOKIE, isTester ? 'test' : 'live', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+  });
+}
+
 function setRefreshCookie(res: Response, refreshToken: string) {
   res.cookie(REFRESH_COOKIE, refreshToken, {
     httpOnly: true,
@@ -75,6 +101,7 @@ export class AuthController {
   async verifyOtp(@Body() dto: VerifyOtpDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.verifyOtp(dto.phone, dto.code, dto.deviceLabel);
     if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    setAudienceCookie(res, (result as any)?.user?.isTester === true);
     return result;
   }
 
@@ -104,6 +131,7 @@ export class AuthController {
   async pinLogin(@Body() dto: PinLoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.signInWithPin(dto.phone, dto.pin, dto.deviceLabel);
     if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    setAudienceCookie(res, (result as any)?.user?.isTester === true);
     return result;
   }
 
@@ -133,6 +161,7 @@ export class AuthController {
     if (!token) throw new UnauthorizedException('Missing refresh token.');
     const result = await this.auth.refresh(token);
     if (result?.refreshToken) setRefreshCookie(res, result.refreshToken);
+    setAudienceCookie(res, (result as any)?.user?.isTester === true);
     return result;
   }
 
@@ -141,6 +170,7 @@ export class AuthController {
   async logout(@CurrentUser() auth: AuthContext, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(auth.sessionId);
     res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    res.clearCookie(AUDIENCE_COOKIE, { path: '/' });
     return { ok: true };
   }
 

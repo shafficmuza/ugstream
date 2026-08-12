@@ -107,6 +107,22 @@ class FakeEpisodeDb {
       access: 'subscription',
       priceUgx: null,
     }),
+    // play() checks the title's audience before handing out a playback URL, so
+    // the fixture has to answer it. Published, not test — the ordinary case.
+    findUnique: async ({ where }: any) => ({
+      id: where.id,
+      name: 'The Asset',
+      slug: 'the-asset',
+      kind: 'series',
+      access: 'subscription',
+      priceUgx: null,
+      published: true,
+      isTest: false,
+    }),
+  };
+
+  user = {
+    findUnique: async () => ({ isTester: false }),
   };
 }
 

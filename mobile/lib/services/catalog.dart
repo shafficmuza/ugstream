@@ -2,17 +2,25 @@ import '../core/api_client.dart';
 import '../models/models.dart';
 
 /// Catalogue + playback API calls.
+///
+/// The browse endpoints are sent AUTHENTICATED even though they are public.
+/// They are optionally authenticated on the server: an anonymous caller gets
+/// the live catalogue, a tester account gets the test one. Sending `auth:
+/// false` — which these used to do, since a public endpoint appeared not to
+/// need a token — stripped the only thing that says who is asking, so a tester
+/// signed in on the phone still saw the live catalogue no matter what the
+/// admin had toggled.
 class CatalogService {
   CatalogService(this._api);
   final ApiClient _api;
 
   Future<HomeData> home() async {
-    final res = await _api.request('/home', auth: false);
+    final res = await _api.request('/home');
     return HomeData.fromJson(res.data);
   }
 
   Future<List<TitleCard>> browse({String? kind, String? genre, String? q, int page = 1}) async {
-    final res = await _api.request('/titles', auth: false, query: {
+    final res = await _api.request('/titles', query: {
       if (kind != null) 'kind': kind,
       if (genre != null) 'genre': genre,
       if (q != null && q.isNotEmpty) 'q': q,
@@ -24,12 +32,12 @@ class CatalogService {
   }
 
   Future<TitleDetail> title(String slug) async {
-    final res = await _api.request('/titles/$slug', auth: false);
+    final res = await _api.request('/titles/$slug');
     return TitleDetail.fromJson(res.data);
   }
 
   Future<List<TitleCard>> similar(String slug) async {
-    final res = await _api.request('/titles/$slug/similar', auth: false);
+    final res = await _api.request('/titles/$slug/similar');
     final list = res.data is List ? res.data as List : ((res.data['items'] as List?) ?? []);
     return list.map((t) => TitleCard.fromJson(t)).toList();
   }

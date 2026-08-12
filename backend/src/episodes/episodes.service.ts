@@ -44,6 +44,26 @@ export class EpisodesService {
       }
     }
 
+    // The audiences are separated at the catalogue, but the catalogue is only
+    // what is DISPLAYED — an episode id is guessable, and the web picks its
+    // list from a cookie. This is where it is actually enforced: a normal
+    // account cannot play a test-only title, and a tester cannot play a live
+    // one, whatever list they arrived from.
+    const titleAudience = await this.prisma.title.findUnique({
+      where: { id: episode.titleId },
+      select: { isTest: true, published: true },
+    });
+    const viewer = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isTester: true },
+    });
+    if (titleAudience) {
+      const allowed = viewer?.isTester ? titleAudience.isTest : titleAudience.published;
+      if (!allowed) {
+        throw new NotFoundException('Video is not ready for playback yet.');
+      }
+    }
+
     const result = await this.entitlements.check(userId, episode.titleId);
     if (!result.entitled) {
       const plans = await this.prisma.plan.findMany({ where: { active: true } });

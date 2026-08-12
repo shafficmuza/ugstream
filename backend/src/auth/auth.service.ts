@@ -542,6 +542,7 @@ export class AuthService {
     phone: string;
     displayName: string | null;
     role: string;
+    isTester?: boolean;
     pinHash?: string | null;
   }) {
     return {
@@ -549,6 +550,9 @@ export class AuthService {
       phone: user.phone,
       displayName: user.displayName,
       role: user.role,
+      // Which catalogue this account is on. The clients use it to pick what to
+      // show; the server still decides what may actually be played.
+      isTester: user.isTester === true,
       // Drives the "set a PIN" prompt straight after a verified sign-in, which
       // is the one moment the user is certain to be paying attention and the
       // only chance to make their next sign-in free.
