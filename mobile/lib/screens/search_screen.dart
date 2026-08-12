@@ -109,62 +109,139 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final browsingRail = widget.heading != null;
     return Scaffold(
-      appBar: AppBar(
-        title: browsingRail
-            ? Text(widget.heading!)
-            : TextField(
-                controller: _ctrl,
-                autofocus: false,
-                onChanged: _onChanged,
-                decoration: const InputDecoration(
-                  hintText: 'Search titles, genres…',
-                  border: InputBorder.none,
-                ),
-              ),
-        actions: [
-          if (!browsingRail && _query.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Clear',
-              onPressed: () {
-                _ctrl.clear();
-                _query = '';
-                _load(reset: true);
-              },
+      appBar: browsingRail
+          ? AppBar(title: Text(widget.heading!))
+          : AppBar(
+              title: const Text('Search'),
+              titleSpacing: 20,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
             ),
+      body: Column(
+        children: [
+          if (!browsingRail) _searchField(),
+          if (_results.isNotEmpty) _countLine(),
+          Expanded(child: _grid()),
         ],
       ),
-      body: _results.isEmpty && _busy
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
-          : _results.isEmpty
-              ? Center(
-                  child: Text(
-                    _query.isEmpty ? 'Nothing here yet' : 'Nothing matches “$_query”',
-                    style: const TextStyle(color: Colors.white38),
-                  ),
-                )
-              : GridView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 2 / 3,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  // One extra cell while more is loading, so the spinner sits
-                  // at the end of the grid rather than replacing it.
-                  itemCount: _results.length + (_busy ? 1 : 0),
-                  itemBuilder: (_, i) => i >= _results.length
-                      ? const Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFE50914)),
-                          ),
-                        )
-                      : TitleCardTile(card: _results[i], width: double.infinity),
-                ),
+    );
+  }
+
+  /// A proper search field rather than a bare input in the app bar: a rounded
+  /// filled box with the icon inside it, which is what the control is expected
+  /// to look like and gives the tap target some size on a phone.
+  Widget _searchField() {
+    final hasText = _ctrl.text.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Material(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+        child: TextField(
+          controller: _ctrl,
+          onChanged: (q) {
+            setState(() {}); // keeps the clear button in step with the text
+            _onChanged(q);
+          },
+          textInputAction: TextInputAction.search,
+          onSubmitted: (q) {
+            _query = q.trim();
+            _load(reset: true);
+          },
+          style: const TextStyle(fontSize: 15.5),
+          cursorColor: const Color(0xFFE50914),
+          decoration: InputDecoration(
+            hintText: 'Titles, genres, VJs…',
+            hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
+            prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 22),
+            suffixIcon: hasText
+                ? IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    tooltip: 'Clear',
+                    onPressed: () {
+                      _ctrl.clear();
+                      _query = '';
+                      setState(() {});
+                      _load(reset: true);
+                    },
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// What is being shown, so an empty box does not look like a failed search:
+  /// with no query this screen is the whole catalogue, not "no results yet".
+  Widget _countLine() {
+    final label = _query.isEmpty
+        ? 'All titles'
+        : 'Results for “$_query”';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+      child: Row(
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 12.5, color: Colors.white54, letterSpacing: 0.2)),
+          const Spacer(),
+          Text(_end ? '${_results.length}' : '${_results.length}+',
+              style: const TextStyle(fontSize: 12.5, color: Colors.white38)),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid() {
+    if (_results.isEmpty && _busy) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
+    }
+    if (_results.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_query.isEmpty ? Icons.movie_outlined : Icons.search_off,
+                  color: Colors.white24, size: 44),
+              const SizedBox(height: 12),
+              Text(
+                _query.isEmpty ? 'Nothing here yet' : 'Nothing matches “$_query”',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white38),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return GridView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 2 / 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      // One extra cell while more is loading, so the spinner sits at the end of
+      // the grid rather than replacing it.
+      itemCount: _results.length + (_busy ? 1 : 0),
+      itemBuilder: (_, i) => i >= _results.length
+          ? const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFE50914)),
+              ),
+            )
+          : TitleCardTile(card: _results[i], width: double.infinity),
     );
   }
 }
