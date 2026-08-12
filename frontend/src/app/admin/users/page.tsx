@@ -14,6 +14,7 @@ interface AdminUser {
   address: string | null;
   role: 'user' | 'editor' | 'admin';
   status: 'active' | 'banned';
+  isTester: boolean;
   createdAt: string;
   pinSet: boolean;
   pinLockedUntil: string | null;
@@ -50,7 +51,9 @@ export default function AdminUsersPage() {
     const q = query.trim().toLowerCase();
     if (!q) return users;
     return users.filter((u) =>
-      [u.phone, u.displayName, u.email, u.role, u.status].some((f) => f?.toLowerCase().includes(q)),
+      [u.phone, u.displayName, u.email, u.role, u.status, u.isTester ? 'tester test' : ''].some((f) =>
+        f?.toLowerCase().includes(q),
+      ),
     );
   }, [users, query]);
   const [recovery, setRecovery] = useState<{ phone: string; code: string; minutes: number } | null>(
@@ -107,6 +110,28 @@ export default function AdminUsersPage() {
     } finally {
       setIssuing(null);
     }
+  }
+
+  /** Put an account on the test catalogue, or back on the live one. A tester
+   *  sees ONLY test titles — this is not additive, it swaps which catalogue
+   *  the account is served. */
+  async function toggleTester(u: AdminUser) {
+    const token = getAccessToken();
+    if (!token) return;
+    const who = u.displayName ? `${u.displayName} (${u.phone})` : u.phone;
+    if (
+      !u.isTester &&
+      !confirm(
+        `Make ${who} a test account?\n\nThey will see ONLY titles marked for test — the live catalogue disappears for them until you switch it back.`,
+      )
+    )
+      return;
+    await apiFetch(`/admin/users/${u.id}`, {
+      method: 'PATCH',
+      token,
+      body: { isTester: !u.isTester },
+    });
+    load();
   }
 
   async function toggleStatus(u: AdminUser) {
@@ -260,6 +285,22 @@ export default function AdminUsersPage() {
                 >
                   {u.status === 'active' ? '🔓 Unlocked' : '🔒 Locked'}
                 </button>
+                <button
+                  onClick={() => toggleTester(u)}
+                  title={u.isTester ? 'On the test catalogue. Click to return to live.' : 'Put this account on the test catalogue only.'}
+                  style={{
+                    marginLeft: 8,
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #333',
+                    cursor: 'pointer',
+                    background: u.isTester ? '#2a2a3d' : 'transparent',
+                    color: u.isTester ? '#8ec3e6' : '#777',
+                  }}
+                >
+                  {u.isTester ? 'Tester' : 'Live'}
+                </button>
               </td>
               <td style={tdStyle}>
                 <button
@@ -315,6 +356,10 @@ export default function AdminUsersPage() {
                           : null
                       }
                       empty="None"
+                    />
+                    <Detail
+                      label="Catalogue"
+                      value={u.isTester ? 'TEST — sees test titles only' : 'Live'}
                     />
                     <Detail label="Devices signed in" value={String(u.sessionCount)} />
                     <Detail label="Titles watched" value={String(u.watchCount)} />

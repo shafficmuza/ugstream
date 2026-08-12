@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional() @IsIn(['user', 'editor', 'admin'])
@@ -9,4 +9,8 @@ export class UpdateUserDto {
 
   @IsOptional() @IsString() @MaxLength(100)
   displayName?: string;
+
+  /** Put this account on the test catalogue instead of the live one. */
+  @IsOptional() @IsBoolean()
+  isTester?: boolean;
 }

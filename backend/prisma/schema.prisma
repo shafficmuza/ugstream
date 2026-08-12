@@ -188,6 +188,9 @@ model User {
   address      String?   @db.VarChar(200)
   role         UserRole  @default(user)
   status       UserStatus @default(active)
+  // Puts this account on the test catalogue instead of the live one. Off for
+  // everyone by default, so no existing account changes behaviour.
+  isTester     Boolean   @default(false) @map("is_tester")
   createdAt    DateTime  @default(now()) @map("created_at")
   // Optional sign-in PIN, set by the user after their first verified sign-in.
   // Once set, returning sign-ins cost nothing: no SMS is sent at all. The OTP
@@ -365,6 +368,12 @@ model Title {
   priceUgx     Int?         @map("price_ugx")
   rentalHours  Int          @default(72) @map("rental_hours")
   published    Boolean      @default(false)
+  // Visible to tester accounts instead of the public catalogue. Deliberately
+  // a separate flag from `published` rather than a third state of it: the
+  // query that serves ordinary viewers stays exactly as it was, so nothing
+  // about what existing users see can change. A tester sees isTest titles and
+  // nothing else; a normal account sees published titles and nothing else.
+  isTest       Boolean      @default(false) @map("is_test")
   // When the "new title" push went out. Publishing is a toggle an admin may
   // flip several times while fixing artwork or episodes, so this is what
   // stops every flip from re-notifying the whole user base. A deliberate

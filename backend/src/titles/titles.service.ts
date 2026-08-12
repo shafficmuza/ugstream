@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { Viewer, audienceWhere, isTestViewer } from './audience';
 
 export interface BrowseQuery {
   kind?: string;
@@ -14,11 +16,11 @@ export interface BrowseQuery {
 export class TitlesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async browse(query: BrowseQuery) {
+  async browse(query: BrowseQuery, viewer?: Viewer | null) {
     const page = Math.max(1, query.page ?? 1);
     const perPage = Math.min(50, Math.max(1, query.perPage ?? 20));
 
-    const where: any = { published: true };
+    const where: any = { ...audienceWhere(viewer) };
     if (query.kind) where.kind = query.kind;
     if (query.language) where.language = query.language;
     if (query.q) {
@@ -52,9 +54,9 @@ export class TitlesService {
     };
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string, viewer?: Viewer | null) {
     const title = await this.prisma.title.findFirst({
-      where: { slug, published: true },
+      where: { slug, ...audienceWhere(viewer) },
       include: {
         episodes: { orderBy: [{ season: 'asc' }, { number: 'asc' }] },
         genres: { include: { genre: true } },
@@ -100,39 +102,45 @@ export class TitlesService {
     };
   }
 
-  async home() {
+  async home(viewer?: Viewer | null) {
+    const audience = audienceWhere(viewer);
     const [newest, movies, series, genres, topTitleIds] = await Promise.all([
       this.prisma.title.findMany({
-        where: { published: true },
+        where: { ...audience },
         orderBy: { createdAt: 'desc' },
         take: 12,
         include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.title.findMany({
-        where: { published: true, kind: 'movie' },
+        where: { ...audience, kind: 'movie' },
         orderBy: { createdAt: 'desc' },
         take: 12,
         include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.title.findMany({
-        where: { published: true, kind: 'series' },
+        where: { ...audience, kind: 'series' },
         orderBy: { createdAt: 'desc' },
         take: 12,
         include: TitlesService.cardEpisodeInclude,
       }),
       this.prisma.genre.findMany({
-        where: { titles: { some: { title: { published: true } } } },
+        where: { titles: { some: { title: { ...audience } } } },
         orderBy: { name: 'asc' },
       }),
       // Popularity = distinct viewers per title. Raw SQL because Prisma's
       // groupBy can't traverse watch_history -> episodes -> titles in one
       // aggregation.
+      // The audience predicate has to be interpolated because this is raw SQL,
+      // so it cannot share the helper's object form — but it must agree with
+      // it. It did not, once: this rail kept `t.published = true` when every
+      // other query moved to the helper, and testers were served live titles
+      // in Top 10. The audience.spec regex now covers this shape too.
       this.prisma.$queryRaw<{ title_id: bigint; viewers: bigint }[]>`
         SELECT e.title_id, COUNT(DISTINCT wh.user_id) AS viewers
         FROM watch_history wh
         JOIN episodes e ON e.id = wh.episode_id
         JOIN titles t ON t.id = e.title_id
-        WHERE t.published = true
+        WHERE ${Prisma.raw(isTestViewer(viewer) ? 't.is_test = true' : 't.published = true')}
         GROUP BY e.title_id
         ORDER BY viewers DESC
         LIMIT 10
@@ -155,7 +163,7 @@ export class TitlesService {
         rail: g.name,
         titles: (
           await this.prisma.title.findMany({
-            where: { published: true, genres: { some: { genreId: g.id } } },
+            where: { ...audience, genres: { some: { genreId: g.id } } },
             orderBy: { createdAt: 'desc' },
             take: 12,
             include: TitlesService.cardEpisodeInclude,
@@ -191,9 +199,10 @@ export class TitlesService {
 
   /** Titles sharing at least one genre — "More Like This". Falls back to
    *  newest published titles when the source title has no genres. */
-  async similar(slug: string) {
+  async similar(slug: string, viewer?: Viewer | null) {
+    const audience = audienceWhere(viewer);
     const title = await this.prisma.title.findFirst({
-      where: { slug, published: true },
+      where: { slug, ...audienceWhere(viewer) },
       include: { genres: true },
     });
     if (!title) throw new NotFoundException('Title not found.');
@@ -201,7 +210,7 @@ export class TitlesService {
     const genreIds = title.genres.map((g) => g.genreId);
     const rows = await this.prisma.title.findMany({
       where: {
-        published: true,
+        ...audience,
         id: { not: title.id },
         ...(genreIds.length ? { genres: { some: { genreId: { in: genreIds } } } } : {}),
       },

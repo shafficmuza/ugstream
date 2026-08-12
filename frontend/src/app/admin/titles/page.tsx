@@ -13,6 +13,7 @@ interface AdminTitle {
   kind: string;
   access: string;
   published: boolean;
+  isTest: boolean;
   episodeCount: number;
 }
 
@@ -50,6 +51,20 @@ export default function AdminTitlesPage() {
       method: 'PATCH',
       token,
       body: { published: !t.published },
+    });
+    load();
+  }
+
+  /** Move a title on or off the tester catalogue. Independent of publishing:
+   *  a test title is invisible to ordinary viewers whether or not it is
+   *  published, and testers never see the live catalogue. */
+  async function toggleTest(t: AdminTitle) {
+    const token = getAccessToken();
+    if (!token) return;
+    await apiFetch(`/admin/titles/${t.id}`, {
+      method: 'PATCH',
+      token,
+      body: { isTest: !t.isTest },
     });
     load();
   }
@@ -107,6 +122,7 @@ export default function AdminTitlesPage() {
             <th style={thStyle}>Access</th>
             <th style={thStyle}>Episodes</th>
             <th style={thStyle}>Published</th>
+            <th style={thStyle}>Test</th>
             <th style={thStyle}></th>
           </tr>
         </thead>
@@ -125,6 +141,22 @@ export default function AdminTitlesPage() {
                 </button>
               </td>
               <td style={tdStyle}>
+                <button
+                  className="btn"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    background: t.isTest ? '#2a2a3d' : 'transparent',
+                    color: t.isTest ? '#8ec3e6' : '#777',
+                    border: '1px solid #333',
+                  }}
+                  title={t.isTest ? 'Testers can see this. Click to remove it from test.' : 'Show this to tester accounts only.'}
+                  onClick={() => toggleTest(t)}
+                >
+                  {t.isTest ? 'In test' : '—'}
+                </button>
+              </td>
+              <td style={tdStyle}>
                 {isAdmin && (
                   <button
                     onClick={() => remove(t)}
@@ -138,7 +170,7 @@ export default function AdminTitlesPage() {
           ))}
           {visible.length === 0 && (
             <tr>
-              <td style={tdStyle} colSpan={6}>
+              <td style={tdStyle} colSpan={7}>
                 {titles.length === 0 ? 'No titles yet.' : `No titles match “${query.trim()}”.`}
               </td>
             </tr>

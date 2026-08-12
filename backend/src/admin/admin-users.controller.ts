@@ -57,6 +57,7 @@ export class AdminUsersController {
           address: true,
           role: true,
           status: true,
+          isTester: true,
           createdAt: true,
           pinSetAt: true,
           pinLockedUntil: true,

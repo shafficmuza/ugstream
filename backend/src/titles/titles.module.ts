@@ -3,12 +3,13 @@ import { TitlesController } from './titles.controller';
 import { AdminTitlesController } from './admin-titles.controller';
 import { MyListController } from './my-list.controller';
 import { TitlesService } from './titles.service';
+import { OptionalJwtGuard } from '../common/guards/optional-jwt.guard';
 import { EpisodesModule } from '../episodes/episodes.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [EpisodesModule, NotificationsModule],
   controllers: [TitlesController, AdminTitlesController, MyListController],
-  providers: [TitlesService],
+  providers: [TitlesService, OptionalJwtGuard],
 })
 export class TitlesModule {}

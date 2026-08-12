@@ -43,6 +43,10 @@ export class UpsertTitleDto {
   @IsOptional() @IsBoolean()
   published?: boolean;
 
+  /** Show this title to tester accounts instead of the live catalogue. */
+  @IsOptional() @IsBoolean()
+  isTest?: boolean;
+
   @IsOptional() @IsArray()
   genreIds?: number[];
 }

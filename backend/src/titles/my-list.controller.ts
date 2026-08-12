@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 import { TitlesService } from './titles.service';
+import { audienceWhere } from './audience';
 
 @UseGuards(JwtAuthGuard)
 @Controller('me/my-list')
@@ -12,7 +13,8 @@ export class MyListController {
   @Get()
   async list(@CurrentUser() auth: AuthContext) {
     const rows = await this.prisma.myListItem.findMany({
-      where: { userId: auth.userId, title: { published: true } },
+      // A tester's list shows test titles; everyone else's shows live ones.
+      where: { userId: auth.userId, title: { ...audienceWhere(auth) } },
       orderBy: { createdAt: 'desc' },
       include: { title: { include: TitlesService.cardEpisodeInclude } },
     });
