@@ -101,8 +101,27 @@ export class AdminUsersController {
     @Param('id') id: string,
     @Body() body: UpdateUserDto,
   ) {
-    const user = await this.prisma.user.update({ where: { id: BigInt(id) }, data: body });
-    return { ...user, id: user.id.toString() };
+    const user = await this.prisma.user.update({
+      where: { id: BigInt(id) },
+      data: body,
+      // Explicit, for the same reason the list endpoint is: spreading the row
+      // returned every account's bcrypt PIN hash to the browser. The admin
+      // screen only needs to know whether a PIN exists.
+      select: {
+        id: true,
+        phone: true,
+        displayName: true,
+        email: true,
+        address: true,
+        role: true,
+        status: true,
+        isTester: true,
+        createdAt: true,
+        pinSetAt: true,
+        pinLockedUntil: true,
+      },
+    });
+    return { ...user, id: user.id.toString(), pinSet: user.pinSetAt != null };
   }
 
   /**
