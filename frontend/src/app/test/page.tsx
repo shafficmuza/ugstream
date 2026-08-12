@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { apiFetch } from '@/lib/api';
-import { fetchSettings } from '@/lib/settings';
 import { Rail } from '@/components/rail';
 import { TitleCard, TitleCardData } from '@/components/title-card';
 
@@ -33,26 +32,10 @@ export default async function TestCataloguePage() {
     // Backend unreachable — render the shell with the explanation rather than
     // an error page, so a tester still knows what they are looking at.
   }
-  const settings = await fetchSettings();
   const empty = data.rails.every((r) => r.titles.length === 0);
 
   return (
     <main style={{ padding: '24px 0 60px' }}>
-      <div
-        style={{
-          margin: '0 4% 28px',
-          padding: '14px 18px',
-          borderRadius: 8,
-          border: '1px solid #2a2a3d',
-          borderLeft: '3px solid #8ec3e6',
-          background: '#121218',
-        }}
-      >
-        <div style={{ fontWeight: 600, fontSize: 16, color: '#8ec3e6' }}>
-          {settings.appName} — test catalogue
-        </div>
-      </div>
-
       {empty ? (
         <p style={{ margin: '0 4%', opacity: 0.6 }}>
           No titles have been added to the test catalogue yet.
