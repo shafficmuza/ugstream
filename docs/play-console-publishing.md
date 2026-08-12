@@ -1,9 +1,17 @@
 # Publishing to Google Play
 
-Two ways to get a build onto Play: upload the bundle by hand, or set up a
-service account so it can be pushed from here. The first release has to be
-manual either way — Google will not let the API create an app or push the very
-first bundle to a track that has never had one.
+Two ways to get a build onto Play: upload the bundle by hand, or run
+`scripts/publish-play.sh`, which builds and pushes it.
+
+    bash scripts/publish-play.sh                 # internal testing
+    bash scripts/publish-play.sh production      # when you mean it
+    bash scripts/publish-play.sh internal --no-build
+
+Set RELEASE_NOTES to say what changed; otherwise it writes a generic line.
+
+The script refuses a debug-signed bundle, and refuses a versionCode that is not
+higher than what the track already holds — the two failures worth catching
+before a 46MB upload rather than after it.
 
 ---
 
@@ -114,10 +122,11 @@ it.
 ## Version numbers
 
 Play rejects a bundle whose `versionCode` is not higher than the last one
-uploaded. The build script does not bump it — `mobile/pubspec.yaml` carries
+uploaded. Nothing bumps it automatically — `mobile/pubspec.yaml` carries
 `version: <name>+<code>`, and the number after the `+` is the versionCode.
 
-Current: **1.3.0+9**. The next upload needs at least `+10`.
+**1.3.0+9 is published to internal testing.** The next upload needs `+10` or
+higher, and the publish script will stop you before uploading if it is not.
 
 The iOS workflow overrides its build number with the CI run number, so only
 Android depends on this being right.
