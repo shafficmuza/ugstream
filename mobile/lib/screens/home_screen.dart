@@ -7,6 +7,7 @@ import '../services/catalog.dart';
 import '../widgets/title_card.dart';
 import 'title_screen.dart';
 import 'player_screen.dart';
+import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -139,18 +140,72 @@ class _Billboard extends StatelessWidget {
       );
 }
 
+/// What a rail's key means as a browse filter, or null when the rail is not a
+/// window onto a larger list.
+class _RailFilter {
+  const _RailFilter({this.kind, this.genre});
+  final String? kind;
+  final String? genre;
+}
+
+_RailFilter? _railFilter(String key) {
+  if (key == 'movies') return const _RailFilter(kind: 'movie');
+  if (key == 'series') return const _RailFilter(kind: 'series');
+  if (key.startsWith('genre-')) return _RailFilter(genre: key.substring('genre-'.length));
+  return null;
+}
+
 class _Rail extends StatelessWidget {
   const _Rail({required this.rail});
   final Rail rail;
   @override
   Widget build(BuildContext context) {
     if (rail.titles.isEmpty) return const SizedBox.shrink();
+    // A rail carries at most twelve titles, so anything beyond that was
+    // unreachable from the app. Rails that map to a filter get a way through
+    // to the full list; 'new' and 'top10' are inherently short lists, not a
+    // truncated view of something larger, so they get none.
+    final filter = _railFilter(rail.key);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-          child: Text(rail.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  rail.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (filter != null)
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SearchScreen(
+                        heading: rail.name,
+                        kind: filter.kind,
+                        genre: filter.genre,
+                      ),
+                    ),
+                  ),
+                  child: const Text(
+                    'View all  ›',
+                    style: TextStyle(fontSize: 13, color: Colors.white70),
+                  ),
+                ),
+            ],
+          ),
         ),
         SizedBox(
           height: 180,
