@@ -75,9 +75,6 @@ flow works on it and you never need the API access page:
 Give it access to this app only, not the whole developer account. The key
 becomes a credential that can ship software under your name.
 
-Give it access to this app only, not the whole developer account. The key
-becomes a credential that can ship software under your name.
-
 ### 3. Give me the key
 
 The JSON must **not** go in the repository — it is public. Put it on the server
