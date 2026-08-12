@@ -48,14 +48,9 @@ export default async function TestCataloguePage() {
           background: '#121218',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4, color: '#8ec3e6' }}>
+        <div style={{ fontWeight: 600, fontSize: 16, color: '#8ec3e6' }}>
           {settings.appName} — test catalogue
         </div>
-        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, opacity: 0.78 }}>
-          Everything below is here for testing and is separate from the live catalogue. To play
-          anything you need an account that has been switched to testing — ask for one, then sign
-          in as normal. Nothing you do here appears to ordinary viewers.
-        </p>
       </div>
 
       {empty ? (
