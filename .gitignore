@@ -17,3 +17,6 @@ work/
 backend/up72.mjs
 backend/fix72.sh
 yt/
+
+# Store screenshots are large binaries generated from device captures.
+brand/screenshots/

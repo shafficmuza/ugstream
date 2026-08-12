@@ -4,9 +4,13 @@
 #
 #   bash scripts/appstore-screenshots.sh <dir-with-screenshots> [outdir]
 #
-# Produces, for every image found:
-#   6.5in/  1242x2688   (iPhone 11 Pro Max / XS Max slot)
-#   6.7in/  1284x2778   (iPhone 12/13/14 Pro Max slot)
+# Produces, for every image found, in whichever orientation it was taken:
+#   6.5in/  1242x2688  portrait   2688x1242  landscape
+#   6.7in/  1284x2778  portrait   2778x1284  landscape
+#
+# Landscape matters here: the player runs full-screen landscape on a phone, so
+# the most persuasive screenshots of a video app are the ones App Store Connect
+# lists sideways.
 #
 # Why this exists: a screenshot from a modern iPhone is 1290x2796 or
 # 1320x2868, and App Store Connect rejects anything that is not exactly one of
@@ -28,6 +32,7 @@ import sys, os, glob
 from PIL import Image
 
 src, out = sys.argv[1], sys.argv[2]
+# (slot, portrait w, portrait h). Landscape is the same pair transposed.
 TARGETS = [('6.5in', 1242, 2688), ('6.7in', 1284, 2778)]
 
 files = sorted(
@@ -41,12 +46,10 @@ print(f'{len(files)} screenshot(s)')
 for i, path in enumerate(files, 1):
     im = Image.open(path).convert('RGB')
     w, h = im.size
-    if h < w:
-        print(f'  {os.path.basename(path)}: landscape ({w}x{h}) — skipped, '
-              f'these targets are portrait')
-        continue
+    landscape = w > h
 
-    for name, tw, th in TARGETS:
+    for name, pw, ph in TARGETS:
+        tw, th = (ph, pw) if landscape else (pw, ph)
         # Scale to fit inside the target, preserving aspect.
         scale = min(tw / w, th / h)
         nw, nh = round(w * scale), round(h * scale)
@@ -58,9 +61,10 @@ for i, path in enumerate(files, 1):
         canvas = Image.new('RGB', (tw, th), edge)
         canvas.paste(resized, ((tw - nw) // 2, (th - nh) // 2))
 
-        dest = os.path.join(out, name, f'{i:02d}.png')
+        suffix = 'landscape' if landscape else 'portrait'
+        dest = os.path.join(out, name, f'{i:02d}-{suffix}.png')
         canvas.save(dest, 'PNG', optimize=True)
-        print(f'  {os.path.basename(path)} {w}x{h} -> {name}/{i:02d}.png {tw}x{th}')
+        print(f'  {os.path.basename(path)} {w}x{h} -> {name}/{i:02d}-{suffix}.png {tw}x{th}')
 
 print(f'\nwritten to {out}/')
 PY
