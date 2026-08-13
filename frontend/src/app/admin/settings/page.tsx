@@ -36,11 +36,30 @@ const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
     label: 'Twilio only',
     hint: 'Every code is sent through Twilio, including Ugandan numbers at roughly 30x the cost. Use during an Africa’s Talking outage.',
   },
+  {
+    value: 'custom',
+    label: 'Custom gateway only',
+    hint: 'Every code is sent through the gateway you configure below. Use this to add a local provider — it needs no app update, because the apps only ever call this server, never the SMS gateway.',
+  },
 ];
 
 const SMS_PROVIDER_LABELS: Record<string, string> = {
   africastalking: "Africa's Talking — East African numbers",
   twilio: 'Twilio — international numbers',
+  custom: 'Custom gateway — any provider with an HTTP API',
+};
+
+/** What each custom-gateway field is for, shown beside its input. */
+const SMS_CUSTOM_HINTS: Record<string, string> = {
+  SMS_CUSTOM_URL: 'Required. The provider’s send endpoint, e.g. https://api.example.com/sms/send',
+  SMS_CUSTOM_METHOD: 'POST (default) or GET.',
+  SMS_CUSTOM_HEADERS: 'Optional JSON object, e.g. {"Authorization":"Bearer abc123"}',
+  SMS_CUSTOM_CONTENT_TYPE:
+    'application/x-www-form-urlencoded (default) or application/json.',
+  SMS_CUSTOM_BODY:
+    'Template sent to the provider. Use {to} and {message} where the number and text go. Default: to={to}&message={message}',
+  SMS_CUSTOM_SUCCESS_CONTAINS:
+    'Optional. Text the reply must contain to count as sent — some gateways answer 200 with a failure inside the body.',
 };
 
 const MOBILE_MONEY_OPTIONS: { value: string; label: string }[] = [

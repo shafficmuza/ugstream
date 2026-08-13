@@ -3,7 +3,7 @@ import { SecretsService } from '../common/secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { callingCode } from './phone.util';
 
-export type SmsProvider = 'africastalking' | 'twilio';
+export type SmsProvider = 'africastalking' | 'twilio' | 'custom';
 
 /**
  * Country calling codes routed to Africa's Talking when routing is 'auto'.
@@ -35,6 +35,7 @@ const AFRICAS_TALKING_MARKETS: Record<string, string> = {
  *   'auto'           route by country code (see AFRICAS_TALKING_MARKETS)
  *   'africastalking' force Africa's Talking for every number
  *   'twilio'         force Twilio for every number
+ *   'custom'         force the configurable gateway below
  *
  * The forced modes exist for outages and for deployments that only ever hold
  * one provider's credentials. 'auto' is the default and the only mode that is
@@ -49,6 +50,16 @@ const AFRICAS_TALKING_MARKETS: Record<string, string> = {
  * Keys:
  *   africastalking: SMS_AT_USERNAME, SMS_AT_API_KEY, SMS_AT_SENDER_ID?, SMS_AT_ENV?
  *   twilio:         SMS_TWILIO_ACCOUNT_SID, SMS_TWILIO_AUTH_TOKEN, SMS_TWILIO_FROM
+ *   custom:         SMS_CUSTOM_URL, and optionally SMS_CUSTOM_METHOD,
+ *                   SMS_CUSTOM_HEADERS, SMS_CUSTOM_BODY, SMS_CUSTOM_CONTENT_TYPE,
+ *                   SMS_CUSTOM_SUCCESS_CONTAINS
+ *
+ * The 'custom' gateway exists so a new provider can be added from the admin
+ * secrets screen without a deploy — and, more to the point, without a new
+ * mobile build: the apps only ever call our own /auth/otp/request, so which
+ * gateway carries the message is invisible to them. Local aggregators come and
+ * go, sender IDs get approved or refused, and switching should not mean waiting
+ * on an app store.
  */
 @Injectable()
 export class SmsService {
@@ -68,6 +79,9 @@ export class SmsService {
 
   /** True once a given provider's credentials are all present. */
   async isProviderConfigured(provider: SmsProvider): Promise<boolean> {
+    if (provider === 'custom') {
+      return Boolean(await this.secrets.get('SMS_CUSTOM_URL'));
+    }
     if (provider === 'twilio') {
       return (
         (await this.secrets.isSet('SMS_TWILIO_ACCOUNT_SID')) &&
@@ -104,15 +118,25 @@ export class SmsService {
     const preferred = this.routeFor(e164, await this.routingMode());
     if (await this.isProviderConfigured(preferred)) return preferred;
 
-    const fallback: SmsProvider = preferred === 'twilio' ? 'africastalking' : 'twilio';
-    if (await this.isProviderConfigured(fallback)) {
-      this.logger.warn(
-        `${preferred} is not configured — sending to ${e164} via ${fallback} instead. ` +
-          (fallback === 'twilio'
-            ? 'This costs roughly 30x more per message; configure Africa’s Talking.'
-            : 'Delivery outside East Africa is unreliable on this provider; configure Twilio.'),
-      );
-      return fallback;
+    // Order matters. Try the natural counterpart first — the routing table
+    // knows AT covers East Africa and Twilio covers everywhere else — and only
+    // then the custom gateway, whose coverage we cannot know. Preferring a
+    // local gateway for an international number would silently fail to deliver,
+    // which is the same trap the routing table exists to avoid.
+    const counterpart: SmsProvider = preferred === 'twilio' ? 'africastalking' : 'twilio';
+    const others: SmsProvider[] = [counterpart, 'custom'].filter(
+      (p) => p !== preferred,
+    ) as SmsProvider[];
+    for (const fallback of others) {
+      if (await this.isProviderConfigured(fallback)) {
+        this.logger.warn(
+          `${preferred} is not configured — sending to ${e164} via ${fallback} instead.` +
+            (fallback === 'twilio'
+              ? ' This costs roughly 30x more per message; configure a local gateway.'
+              : ''),
+        );
+        return fallback;
+      }
     }
     return null;
   }
@@ -123,8 +147,78 @@ export class SmsService {
       this.logger.warn(`[SMS STUB — no gateway configured] to ${phone}: ${message}`);
       return;
     }
+    if (provider === 'custom') return this.sendViaCustom(phone, message);
     if (provider === 'twilio') return this.sendViaTwilio(phone, message);
     return this.sendViaAfricasTalking(phone, message);
+  }
+
+  /**
+   * A gateway defined entirely by admin settings, so a new SMS provider can be
+   * added without a code change or an app release.
+   *
+   *   SMS_CUSTOM_URL              required, e.g. https://api.example.com/send
+   *   SMS_CUSTOM_METHOD           POST (default) or GET
+   *   SMS_CUSTOM_HEADERS          JSON object, e.g. {"Authorization":"Bearer x"}
+   *   SMS_CUSTOM_CONTENT_TYPE     application/x-www-form-urlencoded (default)
+   *                               or application/json
+   *   SMS_CUSTOM_BODY             template; {to} and {message} are substituted.
+   *                               Default: to={to}&message={message}
+   *   SMS_CUSTOM_SUCCESS_CONTAINS optional string the response must contain to
+   *                               count as sent — some gateways answer 200 with
+   *                               a failure in the body, which would otherwise
+   *                               look like success.
+   *
+   * Placeholders are URL-encoded for form bodies and JSON-escaped for JSON
+   * ones, so a message containing & or " cannot corrupt the request.
+   */
+  private async sendViaCustom(phone: string, message: string): Promise<void> {
+    const url = (await this.secrets.get('SMS_CUSTOM_URL'))!;
+    const method = ((await this.secrets.get('SMS_CUSTOM_METHOD')) || 'POST').toUpperCase();
+    const contentType =
+      (await this.secrets.get('SMS_CUSTOM_CONTENT_TYPE')) || 'application/x-www-form-urlencoded';
+    const template = (await this.secrets.get('SMS_CUSTOM_BODY')) || 'to={to}&message={message}';
+    const successNeedle = await this.secrets.get('SMS_CUSTOM_SUCCESS_CONTAINS');
+
+    let headers: Record<string, string> = {};
+    const rawHeaders = await this.secrets.get('SMS_CUSTOM_HEADERS');
+    if (rawHeaders) {
+      try {
+        headers = JSON.parse(rawHeaders);
+      } catch {
+        this.logger.error('SMS_CUSTOM_HEADERS is not valid JSON — sending without extra headers.');
+      }
+    }
+
+    const isJson = contentType.includes('json');
+    const fill = (t: string) =>
+      t
+        .replace(/\{to\}/g, isJson ? this.jsonEscape(phone) : encodeURIComponent(phone))
+        .replace(/\{message\}/g, isJson ? this.jsonEscape(message) : encodeURIComponent(message));
+
+    const filled = fill(template);
+    const target = method === 'GET' ? `${url}${url.includes('?') ? '&' : '?'}${filled}` : url;
+
+    try {
+      const res = await fetch(target, {
+        method,
+        headers: method === 'GET' ? headers : { 'Content-Type': contentType, ...headers },
+        body: method === 'GET' ? undefined : filled,
+      });
+      const text = await res.text().catch(() => '');
+      const ok = res.ok && (!successNeedle || text.includes(successNeedle));
+      if (!ok) {
+        this.logger.error(
+          `Custom SMS gateway failed for ${phone}: HTTP ${res.status} ${text.slice(0, 300)}`,
+        );
+      }
+    } catch (e: any) {
+      this.logger.error(`Custom SMS gateway unreachable for ${phone}: ${e?.message ?? e}`);
+    }
+  }
+
+  /** Escape a value for interpolation into a JSON body template. */
+  private jsonEscape(value: string): string {
+    return JSON.stringify(value).slice(1, -1);
   }
 
   private async sendViaTwilio(phone: string, message: string): Promise<void> {

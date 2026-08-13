@@ -48,6 +48,17 @@ function imageUpload(destination: string, maxSizeBytes: number) {
 const SMS_PROVIDER_KEYS: Record<string, string[]> = {
   africastalking: ['SMS_AT_USERNAME', 'SMS_AT_API_KEY', 'SMS_AT_SENDER_ID', 'SMS_AT_ENV'],
   twilio: ['SMS_TWILIO_ACCOUNT_SID', 'SMS_TWILIO_AUTH_TOKEN', 'SMS_TWILIO_FROM'],
+  // The configurable gateway: whatever a new provider needs is expressed as
+  // these settings rather than as code, so adding one is a form to fill in
+  // rather than a deploy — and never a new mobile build.
+  custom: [
+    'SMS_CUSTOM_URL',
+    'SMS_CUSTOM_METHOD',
+    'SMS_CUSTOM_HEADERS',
+    'SMS_CUSTOM_CONTENT_TYPE',
+    'SMS_CUSTOM_BODY',
+    'SMS_CUSTOM_SUCCESS_CONTAINS',
+  ],
 };
 const ALL_SMS_KEYS = Object.values(SMS_PROVIDER_KEYS).flat();
 
