@@ -302,3 +302,62 @@ describe('SmsService custom gateway', () => {
     await expect(service.send('+256700000001', 'code')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * The sender ID is the field most likely to take the whole sign-in path down.
+ * An unregistered one is rejected outright — Africa's Talking did exactly that
+ * with AFRICASTKNG — so what matters is that it is sent when set and OMITTED
+ * entirely when not, never sent empty.
+ */
+describe('SmsService BulkSMS sender ID', () => {
+  function makeBulkService(settings: Record<string, string>, fetchImpl: any) {
+    const secrets: any = {
+      isSet: jest.fn(async (key: string) => key in settings),
+      get: jest.fn(async (key: string) => settings[key] ?? null),
+    };
+    const prisma: any = {
+      appSettings: { findUnique: jest.fn(async () => ({ smsProvider: 'bulksms' })) },
+    };
+    (global as any).fetch = fetchImpl;
+    return new SmsService(secrets, prisma);
+  }
+
+  const creds = {
+    SMS_BULKSMS_TOKEN_ID: 'id',
+    SMS_BULKSMS_TOKEN_SECRET: 'secret',
+  };
+  const ok = () =>
+    jest.fn(async () => ({ ok: true, status: 201, text: async () => '[{"type":"SENT"}]' }));
+
+  it('sends the registered sender ID as `from`', async () => {
+    const fetchMock = ok();
+    const service = makeBulkService({ ...creds, SMS_BULKSMS_SENDER_ID: 'PROMEDIA' }, fetchMock);
+    await service.send('+256772878614', 'code 123456');
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as any)[1].body);
+    expect(body.from).toBe('PROMEDIA');
+    expect(body.to).toBe('+256772878614');
+  });
+
+  it('omits `from` entirely when no sender ID is set', async () => {
+    // Not an empty string: that is a different request, and the shared numeric
+    // pool is the route that always works.
+    const fetchMock = ok();
+    const service = makeBulkService({ ...creds }, fetchMock);
+    await service.send('+256772878614', 'code 123456');
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as any)[1].body);
+    expect(body).not.toHaveProperty('from');
+  });
+
+  it('reports a rejected send as a failure so the chain can retry', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => '{"detail":"Invalid sender id"}',
+    }));
+    const service = makeBulkService({ ...creds, SMS_BULKSMS_SENDER_ID: 'NOPE' }, fetchMock);
+    const sent = await (service as any).sendViaBulkSms('+256772878614', 'code');
+    expect(sent).toBe(false);
+  });
+});

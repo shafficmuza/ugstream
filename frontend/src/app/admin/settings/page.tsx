@@ -59,6 +59,8 @@ const SMS_PROVIDER_LABELS: Record<string, string> = {
 const SMS_CUSTOM_HINTS: Record<string, string> = {
   SMS_BULKSMS_TOKEN_ID: 'From BulkSMS → Settings → Advanced → API tokens. Not your account username.',
   SMS_BULKSMS_TOKEN_SECRET: 'Shown once when the token is created. Revoke and reissue here if it leaks.',
+  SMS_BULKSMS_SENDER_ID:
+    'Optional. The name codes appear from, e.g. PROMEDIA — it must already be registered on your BulkSMS account. An unregistered name is rejected and nobody receives a code; leave blank to use the shared numeric pool.',
   SMS_CUSTOM_URL: 'Required. The provider’s send endpoint, e.g. https://api.example.com/sms/send',
   SMS_CUSTOM_METHOD: 'POST (default) or GET.',
   SMS_CUSTOM_HEADERS: 'Optional JSON object, e.g. {"Authorization":"Bearer abc123"}',

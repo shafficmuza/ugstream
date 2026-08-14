@@ -82,7 +82,8 @@ const BALANCE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
  * Keys:
  *   africastalking: SMS_AT_USERNAME, SMS_AT_API_KEY, SMS_AT_SENDER_ID?, SMS_AT_ENV?
  *   twilio:         SMS_TWILIO_ACCOUNT_SID, SMS_TWILIO_AUTH_TOKEN, SMS_TWILIO_FROM
- *   bulksms:        SMS_BULKSMS_TOKEN_ID, SMS_BULKSMS_TOKEN_SECRET
+ *   bulksms:        SMS_BULKSMS_TOKEN_ID, SMS_BULKSMS_TOKEN_SECRET, and
+ *                   optionally SMS_BULKSMS_SENDER_ID (must be registered)
  *   custom:         SMS_CUSTOM_URL, and optionally SMS_CUSTOM_METHOD,
  *                   SMS_CUSTOM_HEADERS, SMS_CUSTOM_BODY, SMS_CUSTOM_CONTENT_TYPE,
  *                   SMS_CUSTOM_SUCCESS_CONTAINS
@@ -258,7 +259,16 @@ export class SmsService {
   private async sendViaBulkSms(phone: string, message: string): Promise<boolean> {
     const id = (await this.secrets.get('SMS_BULKSMS_TOKEN_ID'))!;
     const secret = (await this.secrets.get('SMS_BULKSMS_TOKEN_SECRET'))!;
+    const senderId = await this.secrets.get('SMS_BULKSMS_SENDER_ID');
     const auth = Buffer.from(`${id}:${secret}`).toString('base64');
+
+    // `from` is omitted entirely when unset, rather than sent empty: that
+    // routes the message over the shared numeric pool, which always works.
+    // A sender ID must be registered on the account first — an unregistered
+    // one is rejected outright, turning a working gateway into a total sign-in
+    // outage. This is what happened on Africa's Talking with AFRICASTKNG.
+    const payload: Record<string, string> = { to: phone, body: message };
+    if (senderId) payload.from = senderId;
 
     try {
       const res = await fetch('https://api.bulksms.com/v1/messages', {
@@ -268,7 +278,7 @@ export class SmsService {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({ to: phone, body: message }),
+        body: JSON.stringify(payload),
       });
       const text = await res.text().catch(() => '');
 
