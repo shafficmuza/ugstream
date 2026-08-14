@@ -6,11 +6,12 @@ import { SmsService } from './sms.service';
  * Daily plan grosses, and routing the US to Africa's Talking simply doesn't
  * deliver. Neither shows up as an error in testing, so the table is pinned.
  */
-function makeService(configured: { at?: boolean; twilio?: boolean } = {}) {
+function makeService(configured: { at?: boolean; twilio?: boolean; bulksms?: boolean } = {}) {
   const secrets: any = {
     isSet: jest.fn(async (key: string) => {
       if (key.startsWith('SMS_AT_')) return configured.at ?? false;
       if (key.startsWith('SMS_TWILIO_')) return configured.twilio ?? false;
+      if (key.startsWith('SMS_BULKSMS_')) return configured.bulksms ?? false;
       return false;
     }),
     // Keyed rather than blanket, so a provider the test did not configure does
@@ -25,26 +26,28 @@ function makeService(configured: { at?: boolean; twilio?: boolean } = {}) {
 describe('SmsService.routeFor (auto)', () => {
   const service = makeService();
 
-  it('sends East African numbers to Africa’s Talking', () => {
-    expect(service.routeFor('+256772878614', 'auto')).toBe('africastalking'); // Uganda
-    expect(service.routeFor('+254712345678', 'auto')).toBe('africastalking'); // Kenya
-    expect(service.routeFor('+255712345678', 'auto')).toBe('africastalking'); // Tanzania
-    expect(service.routeFor('+250788123456', 'auto')).toBe('africastalking'); // Rwanda
+  it('sends Uganda and the rest of the world to BulkSMS', () => {
+    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms'); // Uganda
+    expect(service.routeFor('+254712345678', 'auto')).toBe('bulksms'); // Kenya
+    expect(service.routeFor('+447911123456', 'auto')).toBe('bulksms'); // UK
+    expect(service.routeFor('+971501234567', 'auto')).toBe('bulksms'); // UAE
+    expect(service.routeFor('+27821234567', 'auto')).toBe('bulksms'); // South Africa
   });
 
-  it('sends the diaspora to Twilio, where those numbers are under a cent', () => {
+  it('keeps USA and Canada on Twilio, which BulkSMS does not deliver to', () => {
+    // Both are +1. A number routed to a gateway that does not serve it gets an
+    // accepted API response and no message, so this is pinned rather than left
+    // to the fallback chain to notice.
     expect(service.routeFor('+14155550123', 'auto')).toBe('twilio'); // USA
-    expect(service.routeFor('+447911123456', 'auto')).toBe('twilio'); // UK
-    expect(service.routeFor('+971501234567', 'auto')).toBe('twilio'); // UAE
-    expect(service.routeFor('+27821234567', 'auto')).toBe('twilio'); // South Africa
+    expect(service.routeFor('+16475550123', 'auto')).toBe('twilio'); // Canada
   });
 
   it('does not confuse country codes that share a prefix', () => {
     // +25 is not a country code; 250/254/255/256 are all distinct, and a
     // sloppy prefix match would send Somalia (+252) or Ethiopia (+251) to a
     // provider that was never chosen for them.
-    expect(service.routeFor('+252612345678', 'auto')).toBe('twilio'); // Somalia
-    expect(service.routeFor('+251911234567', 'auto')).toBe('twilio'); // Ethiopia
+    expect(service.routeFor('+252612345678', 'auto')).toBe('bulksms'); // Somalia
+    expect(service.routeFor('+251911234567', 'auto')).toBe('bulksms'); // Ethiopia
   });
 
   it('falls back to Twilio for unparseable numbers rather than dropping them', () => {
@@ -67,6 +70,7 @@ describe('SmsService.isConfigured', () => {
   });
 
   it('is true as soon as any gateway can send', async () => {
+    expect(await makeService({ bulksms: true }).isConfigured()).toBe(true);
     // This is what disables the OTP_STATIC_CODE login bypass, so it must not
     // require *both* providers — one working gateway means real codes are
     // reaching real people and the bypass has to be off.
@@ -78,18 +82,45 @@ describe('SmsService.isConfigured', () => {
 describe('SmsService.send', () => {
   const message = 'Your verification code is 123456.';
 
-  function withProviderSpies(configured: { at?: boolean; twilio?: boolean }) {
+  function withProviderSpies(configured: { at?: boolean; twilio?: boolean; bulksms?: boolean }) {
     const service = makeService(configured);
-    const at = jest.spyOn(service as any, 'sendViaAfricasTalking').mockResolvedValue(undefined);
-    const twilio = jest.spyOn(service as any, 'sendViaTwilio').mockResolvedValue(undefined);
-    return { service, at, twilio };
+    const at = jest.spyOn(service as any, 'sendViaAfricasTalking').mockResolvedValue(true);
+    const twilio = jest.spyOn(service as any, 'sendViaTwilio').mockResolvedValue(true);
+    const bulk = jest.spyOn(service as any, 'sendViaBulkSms').mockResolvedValue(true);
+    return { service, at, twilio, bulk };
   }
 
   it('uses the routed provider when it is configured', async () => {
-    const { service, at, twilio } = withProviderSpies({ at: true, twilio: true });
+    const { service, bulk, twilio } = withProviderSpies({ bulksms: true, twilio: true });
+    await service.send('+256772878614', message);
+    expect(bulk).toHaveBeenCalled();
+    expect(twilio).not.toHaveBeenCalled();
+  });
+
+  it('never sends a US number via BulkSMS, even when BulkSMS is the only gateway', async () => {
+    // Coverage, not preference: with nothing else configured the right answer
+    // is to send nothing and log it, not to hand the message to a gateway that
+    // will accept it and drop it.
+    const { service, bulk, twilio } = withProviderSpies({ bulksms: true });
+    await service.send('+14155550123', message);
+    expect(bulk).not.toHaveBeenCalled();
+    expect(twilio).not.toHaveBeenCalled();
+  });
+
+  it('sends a US number via Twilio while Uganda still goes to BulkSMS', async () => {
+    const { service, bulk, twilio } = withProviderSpies({ bulksms: true, twilio: true });
+    await service.send('+14155550123', message);
+    expect(twilio).toHaveBeenCalled();
+    await service.send('+256772878614', message);
+    expect(bulk).toHaveBeenCalled();
+  });
+
+  it('prefers Africa’s Talking over BulkSMS in Uganda when the primary is down', async () => {
+    // AT is the cheapest where it operates, so it leads the fallback order.
+    const { service, at, bulk } = withProviderSpies({ at: true });
     await service.send('+256772878614', message);
     expect(at).toHaveBeenCalled();
-    expect(twilio).not.toHaveBeenCalled();
+    expect(bulk).not.toHaveBeenCalled();
   });
 
   it('pays more rather than dropping a login code when the cheap route is down', async () => {
@@ -101,11 +132,50 @@ describe('SmsService.send', () => {
     expect(at).not.toHaveBeenCalled();
   });
 
-  it('falls back the other way for international numbers too', async () => {
+  it('does not send a US number via Africa’s Talking, which cannot deliver it', async () => {
+    // This previously fell back to AT and silently dropped the code. Coverage
+    // is now checked on the fallback too, so nothing is sent at all.
     const { service, at, twilio } = withProviderSpies({ at: true });
     await service.send('+14155550123', message);
-    expect(at).toHaveBeenCalled();
+    expect(at).not.toHaveBeenCalled();
     expect(twilio).not.toHaveBeenCalled();
+  });
+
+  it('retries on the next gateway when the primary fails to deliver', async () => {
+    // The case this exists for: BulkSMS out of credit or its token revoked.
+    // The gateway is configured and reachable, it just refuses the message —
+    // so nothing about "is it configured" catches it, and without a retry
+    // every user is locked out of their account with no visible error.
+    const { service, bulk, at, twilio } = withProviderSpies({
+      bulksms: true,
+      at: true,
+      twilio: true,
+    });
+    bulk.mockResolvedValue(false);
+    at.mockResolvedValue(false);
+    await service.send('+256772878614', message);
+    expect(bulk).toHaveBeenCalled();
+    expect(at).toHaveBeenCalled();
+    expect(twilio).toHaveBeenCalled(); // paid, and worth it
+  });
+
+  it('stops at the first gateway that accepts the message', async () => {
+    // The corollary: no double-sending, and no paying Twilio when the cheap
+    // gateway already delivered.
+    const { service, bulk, twilio } = withProviderSpies({ bulksms: true, twilio: true });
+    await service.send('+256772878614', message);
+    expect(bulk).toHaveBeenCalledTimes(1);
+    expect(twilio).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a US number on a gateway that cannot serve it', async () => {
+    // Failover must still respect coverage, or a Twilio failure would fall
+    // through to BulkSMS and be silently dropped.
+    const { service, bulk, twilio } = withProviderSpies({ bulksms: true, twilio: true });
+    twilio.mockResolvedValue(false);
+    await service.send('+14155550123', message);
+    expect(twilio).toHaveBeenCalled();
+    expect(bulk).not.toHaveBeenCalled();
   });
 
   it('sends nothing when no gateway is configured', async () => {

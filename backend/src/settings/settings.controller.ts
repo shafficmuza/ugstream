@@ -46,6 +46,7 @@ function imageUpload(destination: string, maxSizeBytes: number) {
 
 // Whitelisted SMS credential keys per gateway — the only keys the UI can set.
 const SMS_PROVIDER_KEYS: Record<string, string[]> = {
+  bulksms: ['SMS_BULKSMS_TOKEN_ID', 'SMS_BULKSMS_TOKEN_SECRET'],
   africastalking: ['SMS_AT_USERNAME', 'SMS_AT_API_KEY', 'SMS_AT_SENDER_ID', 'SMS_AT_ENV'],
   twilio: ['SMS_TWILIO_ACCOUNT_SID', 'SMS_TWILIO_AUTH_TOKEN', 'SMS_TWILIO_FROM'],
   // The configurable gateway: whatever a new provider needs is expressed as

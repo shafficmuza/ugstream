@@ -23,8 +23,13 @@ type FormState = Pick<
 const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
   {
     value: 'auto',
-    label: 'Automatic — cheapest route per number (recommended)',
-    hint: "East African numbers go via Africa's Talking (~UGX 30). Everywhere else goes via Twilio, which is under a cent for US/UK numbers but around $0.30 to Uganda. Both sets of credentials below are used.",
+    label: 'Automatic — BulkSMS, with Twilio for US/Canada (recommended)',
+    hint: 'BulkSMS carries Uganda and the rest of the world from one account. It does not deliver to the USA or Canada, so those numbers (+1) go to Twilio automatically. If a gateway has no credentials, the next one that can reach the number is used instead.',
+  },
+  {
+    value: 'bulksms',
+    label: 'BulkSMS only',
+    hint: 'Every code is sent through BulkSMS. US and Canadian numbers still route to Twilio regardless — BulkSMS does not serve those countries, and forcing them there would accept the message and never deliver it.',
   },
   {
     value: 'africastalking',
@@ -44,6 +49,7 @@ const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
 ];
 
 const SMS_PROVIDER_LABELS: Record<string, string> = {
+  bulksms: 'BulkSMS — Uganda and worldwide except USA/Canada',
   africastalking: "Africa's Talking — East African numbers",
   twilio: 'Twilio — international numbers',
   custom: 'Custom gateway — any provider with an HTTP API',
@@ -51,6 +57,8 @@ const SMS_PROVIDER_LABELS: Record<string, string> = {
 
 /** What each custom-gateway field is for, shown beside its input. */
 const SMS_CUSTOM_HINTS: Record<string, string> = {
+  SMS_BULKSMS_TOKEN_ID: 'From BulkSMS → Settings → Advanced → API tokens. Not your account username.',
+  SMS_BULKSMS_TOKEN_SECRET: 'Shown once when the token is created. Revoke and reissue here if it leaks.',
   SMS_CUSTOM_URL: 'Required. The provider’s send endpoint, e.g. https://api.example.com/sms/send',
   SMS_CUSTOM_METHOD: 'POST (default) or GET.',
   SMS_CUSTOM_HEADERS: 'Optional JSON object, e.g. {"Authorization":"Bearer abc123"}',
