@@ -44,6 +44,10 @@ class ApiClient {
   final TokenStore _tokens;
   late final Dio _dio;
 
+  /// The raw client, for transfers that are not API calls — downloading a
+  /// video file to disk wants Dio's streaming download, not the JSON wrapper.
+  Dio get dio => _dio;
+
   /// Swap the transport so tests can exercise the refresh branches without a
   /// server. Nothing in the app calls this.
   @visibleForTesting

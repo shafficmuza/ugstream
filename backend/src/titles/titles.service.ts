@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { Viewer, audienceWhere, isTestViewer } from './audience';
+import { Viewer, audienceWhere, isTestViewer, canPreviewAll } from './audience';
 
 export interface BrowseQuery {
   kind?: string;
@@ -140,7 +140,9 @@ export class TitlesService {
         FROM watch_history wh
         JOIN episodes e ON e.id = wh.episode_id
         JOIN titles t ON t.id = e.title_id
-        WHERE ${Prisma.raw(isTestViewer(viewer) ? 't.is_test = true' : 't.published = true')}
+        WHERE ${Prisma.raw(
+          canPreviewAll(viewer) ? 'TRUE' : isTestViewer(viewer) ? 't.is_test = true' : 't.published = true',
+        )}
         GROUP BY e.title_id
         ORDER BY viewers DESC
         LIMIT 10

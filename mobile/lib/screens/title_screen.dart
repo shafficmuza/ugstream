@@ -4,7 +4,11 @@ import 'package:provider/provider.dart';
 import '../core/auth.dart';
 import '../models/models.dart';
 import '../services/catalog.dart';
+import '../services/downloads.dart';
+import '../core/api_client.dart';
+import '../core/store_policy.dart';
 import 'player_screen.dart';
+import 'subscribe_screen.dart';
 
 class TitleScreen extends StatefulWidget {
   const TitleScreen({super.key, required this.slug, required this.name});
@@ -12,6 +16,79 @@ class TitleScreen extends StatefulWidget {
   final String name;
   @override
   State<TitleScreen> createState() => _TitleScreenState();
+}
+
+/// Download control for one episode: idle, in flight (with progress), done.
+class _DownloadButton extends StatelessWidget {
+  const _DownloadButton({
+    required this.episodeId,
+    required this.titleId,
+    required this.titleName,
+    required this.episodeLabel,
+    this.posterUrl,
+  });
+  final String episodeId;
+  final String titleId;
+  final String titleName;
+  final String episodeLabel;
+  final String? posterUrl;
+
+  Future<void> _start(BuildContext context) async {
+    final store = context.read<DownloadsStore>();
+    try {
+      await store.download(
+        episodeId: episodeId,
+        titleId: titleId,
+        titleName: titleName,
+        episodeLabel: episodeLabel,
+        posterUrl: posterUrl,
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      if (e.statusCode == 402) {
+        // Same fork as a refused play: subscribe where purchase is allowed,
+        // a plain notice on iOS (see store_policy.dart).
+        if (purchasesAllowed) {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen()));
+        } else {
+          showNotEntitledNotice(context);
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Download failed. Check your connection and try again.')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<DownloadsStore>();
+    if (store.isDownloaded(episodeId)) {
+      return const Icon(Icons.download_done, color: Colors.white54);
+    }
+    final progress = store.progressOf(episodeId);
+    if (progress != null) {
+      return SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.5,
+          color: const Color(0xFFE50914),
+          // Indeterminate while Cloudflare prepares the file, real progress
+          // once bytes are moving.
+          value: progress.preparing || progress.total == 0 ? null : progress.fraction,
+        ),
+      );
+    }
+    return IconButton(
+      icon: const Icon(Icons.download_outlined, color: Colors.white70),
+      onPressed: () => _start(context),
+    );
+  }
 }
 
 class _TitleScreenState extends State<TitleScreen> {
@@ -78,6 +155,20 @@ class _TitleScreenState extends State<TitleScreen> {
                         label: const Text('My List'),
                       ),
                     ]),
+                    if (t.kind != 'series' && t.firstPlayable != null) ...[
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        _DownloadButton(
+                          episodeId: t.firstPlayable!.id,
+                          titleId: t.id,
+                          titleName: t.name,
+                          episodeLabel: 'Film',
+                          posterUrl: t.posterUrl,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Download', style: TextStyle(color: Colors.white70)),
+                      ]),
+                    ],
                     if (t.description != null) ...[
                       const SizedBox(height: 16),
                       Text(t.description!, style: const TextStyle(color: Colors.white70, height: 1.4)),
@@ -92,7 +183,19 @@ class _TitleScreenState extends State<TitleScreen> {
                           leading: CircleAvatar(backgroundColor: const Color(0xFF1A1A1A), child: Text('${e.number}')),
                           title: Text(e.name ?? 'Episode ${e.number}'),
                           subtitle: Text(e.ready ? 'Ready' : 'Processing…', style: TextStyle(color: e.ready ? Colors.white54 : Colors.orangeAccent)),
-                          trailing: e.ready ? const Icon(Icons.play_arrow) : null,
+                          trailing: e.ready
+                              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                                  _DownloadButton(
+                                    episodeId: e.id,
+                                    titleId: t.id,
+                                    titleName: t.name,
+                                    episodeLabel: e.name ?? 'Episode ${e.number}',
+                                    posterUrl: t.posterUrl,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.play_arrow),
+                                ])
+                              : null,
                           onTap: e.ready ? () => PlayerScreen.open(context, e.id) : null,
                         ),
                     ],

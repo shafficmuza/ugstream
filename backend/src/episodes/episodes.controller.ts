@@ -28,6 +28,15 @@ export class EpisodesController {
     return this.episodes.play(auth.userId, BigInt(id), auth.sessionId);
   }
 
+  /**
+   * Offline copy. POST because the first call has the side effect of asking
+   * Cloudflare to prepare the MP4 rendition.
+   */
+  @Post('episodes/:id/download')
+  download(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
+    return this.episodes.download(auth.userId, BigInt(id));
+  }
+
   @Put('episodes/:id/progress')
   progress(
     @CurrentUser() auth: AuthContext,

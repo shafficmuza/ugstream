@@ -188,6 +188,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen())),
             ),
+          // The user's own switch, distinct from OS permission: off means the
+          // server deletes this device's token and sends nothing at all.
+          ValueListenableBuilder<bool>(
+            valueListenable: context.read<Auth>().push.enabledNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              secondary: const Icon(Icons.notifications_outlined),
+              title: const Text('Notifications'),
+              subtitle: Text(
+                enabled ? 'New titles and account alerts' : 'This device receives nothing',
+                style: const TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+              value: enabled,
+              activeColor: const Color(0xFFE50914),
+              onChanged: (v) => context.read<Auth>().push.setEnabled(v),
+            ),
+          ),
           // Push state, surfaced because a store build cannot be attached to a
           // debugger: without this, a handset that fails to register is
           // invisible from both ends.

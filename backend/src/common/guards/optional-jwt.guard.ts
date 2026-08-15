@@ -38,7 +38,7 @@ export class OptionalJwtGuard implements CanActivate {
       );
       const user = await this.prisma.user.findUnique({
         where: { id: BigInt(payload.sub) },
-        select: { id: true, role: true, status: true, isTester: true },
+        select: { id: true, role: true, status: true, isTester: true, canPreviewAll: true },
       });
       // A banned account is simply not identified here; the guarded endpoints
       // it actually needs still refuse it.
@@ -48,6 +48,7 @@ export class OptionalJwtGuard implements CanActivate {
           sessionId: payload.sid,
           role: user.role,
           isTester: user.isTester,
+          canPreviewAll: user.canPreviewAll,
         };
       }
     } catch {

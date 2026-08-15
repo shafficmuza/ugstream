@@ -159,6 +159,66 @@ export class CloudflareStreamService {
    * rejected with a silent 401 on the manifest URL. Letting Cloudflare
    * issue the token sidesteps needing our own signing key entirely.
    */
+  /**
+   * Create (or fetch) the MP4 rendition Cloudflare prepares for offline use.
+   *
+   * Stream serves HLS only; a downloadable file is a separate rendition that
+   * must be requested once per video and takes minutes to prepare. The POST is
+   * idempotent in effect — asking again for a video that already has one
+   * returns the existing rendition rather than erroring — so callers can
+   * simply always ask and read the status that comes back.
+   */
+  async ensureDownload(videoUid: string): Promise<{ status: string; percentComplete: number }> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}/downloads`,
+      { method: 'POST', headers: { Authorization: `Bearer ${this.apiToken}` } },
+    );
+    const json = await res.json();
+    if (!json.success) {
+      throw new InternalServerErrorException(
+        `Cloudflare download rendition failed: ${JSON.stringify(json.errors)}`,
+      );
+    }
+    const d = json.result?.default ?? {};
+    return { status: d.status ?? 'inprogress', percentComplete: Number(d.percentComplete ?? 0) };
+  }
+
+  /**
+   * A playback token that is also allowed to fetch /downloads/default.mp4.
+   * Ordinary playback tokens are refused there: requireSignedURLs covers the
+   * download path too, and only a token minted with `downloadable: true`
+   * opens it. Kept separate from signPlaybackToken so a leaked streaming
+   * token can never be used to exfiltrate the file.
+   */
+  async signDownloadToken(videoUid: string, expiresInSeconds: number): Promise<string> {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}/token`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+          downloadable: true,
+        }),
+      },
+    );
+    const json = await res.json();
+    if (!json.success) {
+      throw new InternalServerErrorException(
+        `Cloudflare download token failed: ${JSON.stringify(json.errors)}`,
+      );
+    }
+    return json.result.token;
+  }
+
+  /** The MP4 the app saves for offline viewing, addressed by a downloadable token. */
+  downloadUrl(token: string): string {
+    return `https://customer-${this.config.get('CLOUDFLARE_CUSTOMER_CODE')}.cloudflarestream.com/${token}/downloads/default.mp4`;
+  }
+
   async signPlaybackToken(videoUid: string, expiresInSeconds = 3600): Promise<string> {
     const res = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/stream/${videoUid}/token`,

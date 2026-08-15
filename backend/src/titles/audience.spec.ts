@@ -33,6 +33,23 @@ describe('audienceWhere', () => {
     }
   });
 
+  it('an early-access viewer sees everything, published or not', () => {
+    // The whitelist for a private group while the catalogue is held back: an
+    // empty clause means no restriction, not "match nothing".
+    expect(audienceWhere({ canPreviewAll: true })).toEqual({});
+  });
+
+  it('early access beats the tester flag when both are set', () => {
+    // The wider grant wins. Otherwise flagging a tester for early access would
+    // silently do nothing, which is the opposite of what an admin just asked for.
+    expect(audienceWhere({ isTester: true, canPreviewAll: true })).toEqual({});
+  });
+
+  it('early access off leaves the ordinary rules untouched', () => {
+    expect(audienceWhere({ canPreviewAll: false })).toEqual({ published: true });
+    expect(audienceWhere({ isTester: true, canPreviewAll: false })).toEqual({ isTest: true });
+  });
+
   it('treats a missing flag as an ordinary viewer', () => {
     // Anything that fails to resolve a user must fall back to the PUBLIC
     // catalogue, never the test one — the safe direction to be wrong in.

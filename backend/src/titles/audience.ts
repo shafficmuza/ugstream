@@ -17,12 +17,22 @@
  */
 export interface Viewer {
   isTester?: boolean;
+  /** Early access: sees every title, published or not. */
+  canPreviewAll?: boolean;
 }
 
-export type AudienceWhere = { isTest: true } | { published: true };
+export type AudienceWhere = Record<string, never> | { isTest: true } | { published: true };
 
 export function audienceWhere(viewer?: Viewer | null): AudienceWhere {
+  // Checked before isTester so a previewer who is also a tester still sees
+  // everything — the wider grant wins, which is the intent of the flag.
+  if (viewer?.canPreviewAll) return {};
   return viewer?.isTester ? { isTest: true } : { published: true };
+}
+
+/** True when this viewer is allowed to see unpublished titles. */
+export function canPreviewAll(viewer?: Viewer | null): boolean {
+  return viewer?.canPreviewAll === true;
 }
 
 /** True when this viewer is on the test catalogue. */

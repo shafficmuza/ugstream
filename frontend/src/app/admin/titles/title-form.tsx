@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { labelStyle, inputStyle, uploadFile } from '../shared';
+import { labelStyle, inputStyle, uploadFile, API_BASE } from '../shared';
 
 export interface Genre {
   id: number;
@@ -69,7 +69,7 @@ export function TitleForm({
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+    const base = API_BASE;
     fetch(`${base}/genres`)
       .then((r) => r.json())
       .then(setGenres)

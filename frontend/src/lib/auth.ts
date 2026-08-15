@@ -27,7 +27,7 @@ export function clearTokens() {
   window.localStorage.removeItem(REFRESH_KEY);
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+import { API_BASE } from './api-base';
 
 // Dedupe concurrent refreshes — a burst of 401s (e.g. many parallel upload
 // chunk-sign calls) must trigger exactly one /auth/refresh, not a stampede.

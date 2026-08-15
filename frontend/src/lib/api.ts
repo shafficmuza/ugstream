@@ -1,6 +1,6 @@
 import { getRefreshToken, refreshAccessToken } from './auth';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+import { API_BASE } from './api-base';
 
 export interface ApiError {
   statusCode: number;

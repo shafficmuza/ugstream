@@ -25,7 +25,13 @@ export class EpisodesService {
     private readonly config: ConfigService,
   ) {}
 
-  async play(userId: bigint, episodeId: bigint, sessionId?: string, deviceLabel?: string | null) {
+  /**
+   * Everything that must be true before a user may receive this video by ANY
+   * route — status, audience, entitlement. play() and download() both pass
+   * through here, and only here: the moment either grows its own copy of
+   * these checks, the two drift, and the weaker one becomes the way in.
+   */
+  private async gateForViewing(userId: bigint, episodeId: bigint) {
     let episode = await this.prisma.episode.findUnique({ where: { id: episodeId } });
     if (!episode) throw new NotFoundException('Episode not found.');
 
@@ -55,9 +61,9 @@ export class EpisodesService {
     });
     const viewer = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { isTester: true },
+      select: { isTester: true, canPreviewAll: true },
     });
-    if (titleAudience) {
+    if (titleAudience && !viewer?.canPreviewAll) {
       const allowed = viewer?.isTester ? titleAudience.isTest : titleAudience.published;
       if (!allowed) {
         throw new NotFoundException('Video is not ready for playback yet.');
@@ -85,6 +91,68 @@ export class EpisodesService {
         HttpStatus.PAYMENT_REQUIRED,
       );
     }
+    return episode;
+  }
+
+  /**
+   * Authorize an offline copy and hand back a time-boxed URL for it.
+   *
+   * Passes the identical gate as play() — a download is playback that
+   * happens later, and any check skipped here would make "download it"
+   * the workaround for every restriction streaming enforces. It does NOT
+   * claim a concurrent-stream slot: fetching a file is not a stream, and
+   * holding a slot for the length of a download would evict real viewers.
+   *
+   * Cloudflare prepares the MP4 rendition lazily, so the first request for a
+   * title usually answers { status: 'preparing' } and the app retries; once
+   * ready it answers a URL whose token allows the download path. validUntil
+   * tells the app how long the saved file may be played offline before it
+   * must revalidate — the subscription's own expiry, since that is the thing
+   * being enforced.
+   */
+  async download(userId: bigint, episodeId: bigint) {
+    const episode = await this.gateForViewing(userId, episodeId);
+
+    if (episode.videoProvider === 'r2_hls' || episode.videoProvider === 'r2_file') {
+      // R2-hosted titles have no MP4 rendition service behind them yet.
+      throw new HttpException(
+        { error: 'Not available', reason: 'download_unsupported' },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const rendition = await this.stream.ensureDownload(episode.cfVideoUid!);
+    if (rendition.status !== 'ready') {
+      return { status: 'preparing', percentComplete: rendition.percentComplete };
+    }
+
+    // Long enough to finish a large film on a slow connection, short enough
+    // that a leaked link dies the same day.
+    const tokenTtlSecs = 24 * 3600;
+    const token = await this.stream.signDownloadToken(episode.cfVideoUid!, tokenTtlSecs);
+
+    const sub = await this.prisma.subscription.findFirst({
+      where: { userId, expiresAt: { gt: new Date() } },
+      orderBy: { expiresAt: 'desc' },
+      select: { expiresAt: true },
+    });
+    // Free titles and staff have no subscription to expire; give the offline
+    // copy a rolling month before the app must check in again.
+    const validUntil = sub?.expiresAt ?? new Date(Date.now() + 30 * 24 * 3600 * 1000);
+
+    return {
+      status: 'ready',
+      url: this.stream.downloadUrl(token),
+      expiresIn: tokenTtlSecs,
+      validUntil,
+      episodeId: episode.id.toString(),
+      titleId: episode.titleId.toString(),
+      durationSecs: episode.durationSecs,
+    };
+  }
+
+  async play(userId: bigint, episodeId: bigint, sessionId?: string, deviceLabel?: string | null) {
+    const episode = await this.gateForViewing(userId, episodeId);
 
     // Claim a concurrent-stream slot, after entitlement so a user who cannot
     // watch this at all is told that rather than being sent to stop another

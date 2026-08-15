@@ -2,11 +2,14 @@
 # Turn screenshots taken on an iPhone into the exact sizes App Store Connect
 # accepts.
 #
-#   bash scripts/appstore-screenshots.sh <dir-with-screenshots> [outdir]
+#   bash scripts/appstore-screenshots.sh <dir-with-screenshots> [outdir] [--ipad]
 #
 # Produces, for every image found, in whichever orientation it was taken:
 #   6.5in/  1242x2688  portrait   2688x1242  landscape
 #   6.7in/  1284x2778  portrait   2778x1284  landscape
+#
+# With --ipad, targets the 13-inch iPad slot instead:
+#   13in/   2064x2752  portrait   2752x2064  landscape
 #
 # Landscape matters here: the player runs full-screen landscape on a phone, so
 # the most persuasive screenshots of a video app are the ones App Store Connect
@@ -23,9 +26,13 @@ set -euo pipefail
 
 SRC="${1:-}"
 OUT="${2:-/root/ugstream/brand/screenshots}"
-[ -n "$SRC" ] && [ -d "$SRC" ] || { echo "usage: $0 <dir-with-screenshots> [outdir]" >&2; exit 1; }
+[ "${2:-}" = "--ipad" ] && OUT=/root/ugstream/brand/screenshots
+IPAD=false
+for a in "$@"; do [ "$a" = "--ipad" ] && IPAD=true; done
+[ -n "$SRC" ] && [ -d "$SRC" ] || { echo "usage: $0 <dir> [outdir] [--ipad]" >&2; exit 1; }
 
-mkdir -p "$OUT/6.5in" "$OUT/6.7in"
+if $IPAD; then mkdir -p "$OUT/13in"; else mkdir -p "$OUT/6.5in" "$OUT/6.7in"; fi
+export IPAD
 
 python3 - "$SRC" "$OUT" <<'PY'
 import sys, os, glob
@@ -33,7 +40,8 @@ from PIL import Image
 
 src, out = sys.argv[1], sys.argv[2]
 # (slot, portrait w, portrait h). Landscape is the same pair transposed.
-TARGETS = [('6.5in', 1242, 2688), ('6.7in', 1284, 2778)]
+TARGETS = ([('13in', 2064, 2752)] if os.environ.get('IPAD') == 'true'
+           else [('6.5in', 1242, 2688), ('6.7in', 1284, 2778)])
 
 files = sorted(
     f for ext in ('png', 'jpg', 'jpeg', 'PNG', 'JPG')

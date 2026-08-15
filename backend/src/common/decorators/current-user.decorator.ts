@@ -6,6 +6,8 @@ export interface AuthContext {
   role: string;
   /** Sees the test catalogue instead of the live one. */
   isTester: boolean;
+  /** Early access: sees every title, published or not. */
+  canPreviewAll: boolean;
 }
 
 /** Pulls the auth context set by JwtAuthGuard onto req.auth. */

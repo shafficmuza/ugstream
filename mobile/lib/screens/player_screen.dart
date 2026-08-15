@@ -7,16 +7,42 @@ import 'package:video_player/video_player.dart';
 import '../core/api_client.dart';
 import '../core/auth.dart';
 import '../core/store_policy.dart';
+import 'dart:io' show File;
 import '../models/models.dart';
+import '../services/downloads.dart';
 import '../services/catalog.dart';
 import '../widgets/cast_button.dart';
 import 'subscribe_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
-  const PlayerScreen({super.key, required this.episodeId, required this.play, this.startAt});
+  const PlayerScreen({super.key, required this.episodeId, required this.play, this.startAt, this.localPath});
   final String episodeId;
   final PlayInfo play;
   final int? startAt;
+
+  /// Set when playing a downloaded file: the player reads this path instead
+  /// of the network, saves no progress, and never tries to re-resolve a
+  /// stream — there may be no connection at all.
+  final String? localPath;
+
+  /// Play an offline copy. No entitlement round-trip: the server authorized
+  /// this video when it was downloaded, and the entry's own validity window
+  /// (checked by the caller) is the offline enforcement.
+  static void openLocal(BuildContext context, DownloadEntry entry) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PlayerScreen(
+        episodeId: entry.episodeId,
+        localPath: entry.filePath,
+        play: PlayInfo(
+          provider: 'local',
+          playbackUrl: '',
+          resumeAt: 0,
+          titleName: entry.titleName,
+          epLabel: entry.episodeLabel,
+        ),
+      ),
+    ));
+  }
 
   /// Resolve entitlement + playback, then open the player. On 402 (not
   /// entitled) routes to the subscribe screen instead.
@@ -113,7 +139,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _init(widget.play.playbackUrl, widget.startAt ?? widget.play.resumeAt);
+    widget.localPath != null
+        ? _init(widget.localPath!, widget.startAt ?? 0, local: true)
+        : _init(widget.play.playbackUrl, widget.startAt ?? widget.play.resumeAt);
   }
 
   /// Leaving the app is a checkpoint, not a pause we can ignore.
@@ -138,15 +166,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     }
   }
 
-  Future<void> _init(String url, int startAtSecs) async {
-    final v = VideoPlayerController.networkUrl(Uri.parse(url));
+  Future<void> _init(String url, int startAtSecs, {bool local = false}) async {
+    final v = local
+        ? VideoPlayerController.file(File(url))
+        : VideoPlayerController.networkUrl(Uri.parse(url));
     _video = v;
     await v.initialize();
     await _resumeTo(v, startAtSecs);
     v.addListener(_onTick);
     if (mounted) setState(() => _ready = true);
     _scheduleHide();
-    _progressTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _saveProgress());
+    if (widget.localPath == null) {
+      _progressTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _saveProgress());
+    }
   }
 
   /// Start playing at [startAtSecs], confirming the player actually got there.
@@ -248,6 +280,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         return;
       }
       if (mounted) setState(() => _ready = false);
+      if (widget.localPath != null) {
+        await _init(widget.localPath!, _lastPositionSecs, local: true);
+        _recovering = false;
+        return;
+      }
       final fresh = await _catalog.play(widget.episodeId);
       if (!mounted) return;
       await _init(fresh.playbackUrl, _lastPositionSecs);

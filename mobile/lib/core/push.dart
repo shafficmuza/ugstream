@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -65,6 +66,59 @@ class Push {
 
   bool get hasToken => _token != null;
 
+  /// User's own choice, independent of OS permission: OS settings decide
+  /// whether notifications may be SHOWN, this decides whether the server may
+  /// SEND to this device at all. Off = the token is removed server-side, so
+  /// nothing is dispatched in the first place.
+  final ValueNotifier<bool> enabledNotifier = ValueNotifier<bool>(true);
+  bool get enabled => enabledNotifier.value;
+
+  Future<File> _prefFile() async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/push_disabled');
+  }
+
+  Future<void> _loadPreference() async {
+    try {
+      enabledNotifier.value = !await (await _prefFile()).exists();
+    } catch (_) {
+      enabledNotifier.value = true;
+    }
+  }
+
+  /// Flip notifications for this device. The preference is a marker file —
+  /// present means off — so it survives restarts, and its absence (the
+  /// default, and the recovery from any read failure) means ON, which is the
+  /// state every existing install is already in.
+  Future<void> setEnabled(bool value) async {
+    enabledNotifier.value = value;
+    try {
+      final f = await _prefFile();
+      if (value) {
+        if (await f.exists()) await f.delete();
+      } else {
+        await f.writeAsString('1');
+      }
+    } catch (_) {}
+
+    if (!value) {
+      final t = _token;
+      if (t != null) {
+        try {
+          await _api.request('/devices/$t', method: 'DELETE');
+          status = 'Off — notifications disabled on this device';
+        } catch (e) {
+          status = 'Off locally; server unregister failed: $e';
+        }
+      } else {
+        status = 'Off — notifications disabled on this device';
+      }
+    } else {
+      status = 'Re-registering…';
+      await _syncToken();
+    }
+  }
+
   /// Set by the app so a tapped notification can navigate. Receives the
   /// `path` the backend put in the data payload, e.g. "/title/some-slug".
   void Function(String path)? onOpenPath;
@@ -75,6 +129,7 @@ class Push {
 
   Future<void> init() async {
     if (_ready) return;
+    await _loadPreference();
     status = 'Starting…';
     try {
       await Firebase.initializeApp().timeout(const Duration(seconds: 20));
@@ -215,6 +270,10 @@ class Push {
 
   Future<void> _syncToken() async {
     if (!_ready) return;
+    if (!enabled) {
+      status = 'Off — notifications disabled on this device';
+      return;
+    }
 
     // On iOS, FCM cannot mint a token until APNs has handed one to the app,
     // which happens asynchronously after registerForRemoteNotifications and

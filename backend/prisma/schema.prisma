@@ -191,6 +191,12 @@ model User {
   // Puts this account on the test catalogue instead of the live one. Off for
   // everyone by default, so no existing account changes behaviour.
   isTester     Boolean   @default(false) @map("is_tester")
+  // Sees every title regardless of whether it is published — an early-access
+  // whitelist for a handful of named people while the catalogue is held back.
+  // Deliberately separate from isTester rather than a mode of it: the two
+  // answer different questions, and folding them together would change what
+  // an existing tester account sees the moment this is switched on.
+  canPreviewAll Boolean  @default(false) @map("can_preview_all")
   createdAt    DateTime  @default(now()) @map("created_at")
   // Optional sign-in PIN, set by the user after their first verified sign-in.
   // Once set, returning sign-ins cost nothing: no SMS is sent at all. The OTP

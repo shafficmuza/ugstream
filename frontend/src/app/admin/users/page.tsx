@@ -15,6 +15,7 @@ interface AdminUser {
   role: 'user' | 'editor' | 'admin';
   status: 'active' | 'banned';
   isTester: boolean;
+  canPreviewAll: boolean;
   createdAt: string;
   pinSet: boolean;
   pinLockedUntil: string | null;
@@ -130,6 +131,28 @@ export default function AdminUsersPage() {
       method: 'PATCH',
       token,
       body: { isTester: !u.isTester },
+    });
+    load();
+  }
+
+  /** Early access: let this account see every title while the catalogue is
+   *  held back. Independent of Tester — that swaps which catalogue an account
+   *  is served, this one lifts the restriction entirely. */
+  async function togglePreview(u: AdminUser) {
+    const token = getAccessToken();
+    if (!token) return;
+    const who = u.displayName ? `${u.displayName} (${u.phone})` : u.phone;
+    if (
+      !u.canPreviewAll &&
+      !confirm(
+        `Give ${who} early access?\n\nThey will see every title, including ones that are not published — while everyone else sees only the published catalogue.`,
+      )
+    )
+      return;
+    await apiFetch(`/admin/users/${u.id}`, {
+      method: 'PATCH',
+      token,
+      body: { canPreviewAll: !u.canPreviewAll },
     });
     load();
   }
@@ -301,6 +324,22 @@ export default function AdminUsersPage() {
                 >
                   {u.isTester ? 'Tester' : 'Live'}
                 </button>
+                <button
+                  onClick={() => togglePreview(u)}
+                  title={u.canPreviewAll ? 'Sees every title, published or not. Click to remove.' : 'Give early access to unpublished titles.'}
+                  style={{
+                    marginLeft: 8,
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #333',
+                    cursor: 'pointer',
+                    background: u.canPreviewAll ? '#3d3320' : 'transparent',
+                    color: u.canPreviewAll ? '#e6c88e' : '#777',
+                  }}
+                >
+                  {u.canPreviewAll ? 'Early access' : '—'}
+                </button>
               </td>
               <td style={tdStyle}>
                 <button
@@ -359,7 +398,13 @@ export default function AdminUsersPage() {
                     />
                     <Detail
                       label="Catalogue"
-                      value={u.isTester ? 'TEST — sees test titles only' : 'Live'}
+                      value={
+                        u.canPreviewAll
+                          ? 'EARLY ACCESS — sees every title'
+                          : u.isTester
+                            ? 'TEST — sees test titles only'
+                            : 'Live'
+                      }
                     />
                     <Detail label="Devices signed in" value={String(u.sessionCount)} />
                     <Detail label="Titles watched" value={String(u.watchCount)} />

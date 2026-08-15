@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
+import 'downloads_screen.dart';
 import 'my_list_screen.dart';
 import 'profile_screen.dart';
 
@@ -13,7 +14,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int _index = 0;
-  final _pages = const [HomeScreen(), SearchScreen(), MyListScreen(), ProfileScreen()];
+  final _pages = const [HomeScreen(), SearchScreen(), MyListScreen(), DownloadsScreen(), ProfileScreen()];
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +28,7 @@ class _ShellState extends State<Shell> {
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
           NavigationDestination(icon: Icon(Icons.bookmark_border), selectedIcon: Icon(Icons.bookmark), label: 'My List'),
+          NavigationDestination(icon: Icon(Icons.download_outlined), selectedIcon: Icon(Icons.download), label: 'Downloads'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

@@ -9,7 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  dio: ^5.4.0                     # HTTP client (interceptors for auth + token refresh)
+  dio: ^5.4.0
+  path_provider: ^2.1.2          # app-private storage for offline downloads                     # HTTP client (interceptors for auth + token refresh)
   flutter_secure_storage: ^9.0.0 # Keychain/Keystore token storage
   provider: ^6.1.0               # simple state management (auth)
   cached_network_image: ^3.3.0   # poster/banner images

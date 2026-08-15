@@ -13,4 +13,8 @@ export class UpdateUserDto {
   /** Put this account on the test catalogue instead of the live one. */
   @IsOptional() @IsBoolean()
   isTester?: boolean;
+
+  /** Early access: see every title while the catalogue is held back. */
+  @IsOptional() @IsBoolean()
+  canPreviewAll?: boolean;
 }

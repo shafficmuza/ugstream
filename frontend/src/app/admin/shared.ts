@@ -1,6 +1,7 @@
 import { getAccessToken, getRefreshToken, refreshAccessToken } from '@/lib/auth';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:4001/v1';
+import { API_BASE } from '../../lib/api-base';
+export { API_BASE };
 
 export const labelStyle: React.CSSProperties = {
   display: 'block',
