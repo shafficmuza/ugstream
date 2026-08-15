@@ -18,10 +18,14 @@ category as other video apps; it was not designed around the Kids category
 requirements, and we agree it does not belong there. The parental-gate
 requirements for external links and sharing therefore no longer apply.
 
-For completeness: both cited surfaces — the web view and the AirDrop option in
-its share toolbar — belonged to the in-app payment flow, which has been
-removed entirely in this build (see 3.1.1 below). The app now contains no web
-views, no external links, and no share functionality of any kind.
+For completeness on the two cited surfaces: the web view was the hosted
+payment page opened by the purchase flow, which has been removed entirely in
+this build (see 3.1.1 below) — the app now contains no web views and no
+external links. The sharing control is the standard AirPlay picker in the
+video player, used to stream a video the user is already watching to their
+own television; with the app no longer in the Kids category we understand no
+parental gate is required for it, and it remains in place as it does in other
+video streaming apps.
 
 **Guideline 3.1.1 — In-App Purchase**
 
