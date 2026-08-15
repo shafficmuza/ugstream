@@ -26,7 +26,10 @@ class _DownloadButton extends StatelessWidget {
     required this.titleName,
     required this.episodeLabel,
     this.posterUrl,
+    this.expanded = false,
   });
+  /// Full-width button with a label (films) vs a 48dp icon (episode rows).
+  final bool expanded;
   final String episodeId;
   final String titleId;
   final String titleName;
@@ -64,27 +67,71 @@ class _DownloadButton extends StatelessWidget {
     }
   }
 
+  Widget _ring(DownloadProgress progress, {double size = 22}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CircularProgressIndicator(
+        strokeWidth: 2.5,
+        color: const Color(0xFFE50914),
+        // Indeterminate while Cloudflare prepares the file, real progress
+        // once bytes are moving.
+        value: progress.preparing || progress.total == 0 ? null : progress.fraction,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = context.watch<DownloadsStore>();
-    if (store.isDownloaded(episodeId)) {
-      return const Icon(Icons.download_done, color: Colors.white54);
-    }
+    final done = store.isDownloaded(episodeId);
     final progress = store.progressOf(episodeId);
-    if (progress != null) {
+
+    if (expanded) {
+      // One full-width surface — icon, word and progress are all the same
+      // button, so there is nothing dead to tap. The compact icon-only form
+      // taught users to tap the word "Download", which did nothing.
+      final label = done
+          ? 'Downloaded'
+          : progress == null
+              ? 'Download'
+              : progress.preparing
+                  ? 'Preparing…'
+                  : 'Downloading ${(progress.fraction * 100).round()}%';
       return SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(
-          strokeWidth: 2.5,
-          color: const Color(0xFFE50914),
-          // Indeterminate while Cloudflare prepares the file, real progress
-          // once bytes are moving.
-          value: progress.preparing || progress.total == 0 ? null : progress.fraction,
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: done || progress != null ? null : () => _start(context),
+          icon: done
+              ? const Icon(Icons.download_done)
+              : progress != null
+                  ? _ring(progress, size: 18)
+                  : const Icon(Icons.download_outlined),
+          label: Text(label),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white70,
+            disabledForegroundColor: Colors.white54,
+            side: const BorderSide(color: Colors.white24),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
         ),
       );
     }
+
+    // Compact form for episode rows — still a full 48dp Material touch
+    // target, the minimum a finger can hit reliably.
+    if (done) {
+      return const SizedBox(
+        width: 48,
+        height: 48,
+        child: Icon(Icons.download_done, color: Colors.white54),
+      );
+    }
+    if (progress != null) {
+      return SizedBox(width: 48, height: 48, child: Center(child: _ring(progress)));
+    }
     return IconButton(
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
       icon: const Icon(Icons.download_outlined, color: Colors.white70),
       onPressed: () => _start(context),
     );
@@ -157,17 +204,14 @@ class _TitleScreenState extends State<TitleScreen> {
                     ]),
                     if (t.kind != 'series' && t.firstPlayable != null) ...[
                       const SizedBox(height: 10),
-                      Row(children: [
-                        _DownloadButton(
-                          episodeId: t.firstPlayable!.id,
-                          titleId: t.id,
-                          titleName: t.name,
-                          episodeLabel: 'Film',
-                          posterUrl: t.posterUrl,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Download', style: TextStyle(color: Colors.white70)),
-                      ]),
+                      _DownloadButton(
+                        episodeId: t.firstPlayable!.id,
+                        titleId: t.id,
+                        titleName: t.name,
+                        episodeLabel: 'Film',
+                        posterUrl: t.posterUrl,
+                        expanded: true,
+                      ),
                     ],
                     if (t.description != null) ...[
                       const SizedBox(height: 16),
