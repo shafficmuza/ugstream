@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 
 /// Whether this build may show any way to purchase a subscription.
 ///
-/// On iOS the answer is no, permanently. Apple's guideline 3.1.1 requires
+/// On iOS and in the Play Store bundle the answer is no, permanently.
+/// Apple's guideline 3.1.1 requires
 /// digital subscriptions to be sold through In-App Purchase, and the Uganda
 /// storefront has no link-out exception — App Review rejected build 42 for
 /// exactly this. Mobile Money cannot be sold through IAP at all, so the iOS
@@ -14,7 +15,23 @@ import 'package:flutter/material.dart';
 /// This is deliberately not a server-driven flag. A remotely switchable
 /// purchase flow on iOS is indistinguishable from hiding it from App Review,
 /// which is the fastest way to lose the developer account.
-bool get purchasesAllowed => kIsWeb || !Platform.isIOS;
+
+/// Which store this binary is built for: '' (sideloaded APK), 'play'.
+/// Set at build time: --dart-define=STORE=play for the Play bundle.
+const String _store = String.fromEnvironment('STORE');
+
+bool get purchasesAllowed {
+  if (kIsWeb) return true;
+  // iOS: never. Apple's 3.1.1, see above.
+  if (Platform.isIOS) return false;
+  // The Play Store bundle: never, for the same reason with a different
+  // landlord — Play's Payments policy requires Google Play Billing for
+  // digital subscriptions, and mobile money in-app is a removable offence
+  // the moment a reviewer looks. The sideloaded APK from the website is
+  // outside any store's rules and keeps the full payment flow.
+  if (_store == 'play') return false;
+  return true;
+}
 
 /// What an un-entitled viewer sees on iOS instead of the subscribe screen.
 ///

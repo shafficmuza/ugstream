@@ -39,7 +39,7 @@ if $BUILD; then
   # lost — generate them here as the APK script does.
   dart run flutter_launcher_icons
   flutter test
-  flutter build appbundle --release --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+  flutter build appbundle --release --dart-define=API_BASE=https://ham.sentepos.com/api/v1 --dart-define=STORE=play
 fi
 [ -f "$AAB" ] || { echo "No bundle at $AAB" >&2; exit 1; }
 
