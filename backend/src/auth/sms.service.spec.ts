@@ -418,3 +418,92 @@ describe('SmsService BulkSMS sender ID', () => {
     expect(sent).toBe(false);
   });
 });
+
+/**
+ * The relay exists because Route Mobile whitelists by source IP and this
+ * server is not on the list. What matters is that it stays a transport
+ * detail: a relay failure must behave like any other gateway failure so the
+ * chain continues to BulkSMS, and a relay that answers 200 with
+ * {"status":"failed"} must not read as delivered.
+ */
+describe('SmsService Route Mobile relay', () => {
+  function makeRelayService(settings: Record<string, string>, fetchImpl: any) {
+    const secrets: any = {
+      isSet: jest.fn(async (key: string) => key in settings),
+      get: jest.fn(async (key: string) => settings[key] ?? null),
+    };
+    const prisma: any = {
+      appSettings: { findUnique: jest.fn(async () => ({ smsProvider: 'auto' })) },
+    };
+    (global as any).fetch = fetchImpl;
+    return new SmsService(secrets, prisma);
+  }
+
+  const base = {
+    SMS_RML_USERNAME: 'u',
+    SMS_RML_PASSWORD: 'p',
+    SMS_RML_RELAY_URL: 'https://relay.example/sms/api',
+    SMS_RML_RELAY_PHONE: '256700000001',
+    SMS_RML_RELAY_PASSWORD: 'secret',
+    SMS_RML_SENDER_ID: 'PROMEDIA',
+  };
+
+  it('logs in once and reuses the token for later sends', async () => {
+    const fetchMock = jest.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/login')) {
+        return { ok: true, status: 200, json: async () => ({ token: 'jwt-1' }) };
+      }
+      return { ok: true, status: 200, text: async () => '{"status":"sent"}' };
+    });
+    const service = makeRelayService(base, fetchMock);
+    await service.send('+256752478186', 'code');
+    await service.send('+256752478186', 'code');
+
+    const logins = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith('/auth/login'));
+    expect(logins).toHaveLength(1);
+  });
+
+  it('treats a 200 carrying "failed" as a failure', async () => {
+    // The relay answers 200 with the per-message outcome in the body. Reading
+    // only the HTTP status would mark an undelivered code as sent and stop
+    // the chain before BulkSMS ever saw it.
+    const fetchMock = jest.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/login')) {
+        return { ok: true, status: 200, json: async () => ({ token: 'jwt-1' }) };
+      }
+      return { ok: true, status: 200, text: async () => '{"status":"failed"}' };
+    });
+    const service = makeRelayService(base, fetchMock);
+    const sent = await (service as any).sendViaRouteMobile('+256752478186', 'code');
+    expect(sent).toBe(false);
+  });
+
+  it('re-authenticates once when the relay rejects the cached token', async () => {
+    let sends = 0;
+    const fetchMock = jest.fn(async (url: string) => {
+      if (String(url).endsWith('/auth/login')) {
+        return { ok: true, status: 200, json: async () => ({ token: 'jwt-' + Date.now() }) };
+      }
+      sends += 1;
+      if (sends === 1) return { ok: false, status: 401, text: async () => 'expired' };
+      return { ok: true, status: 200, text: async () => '{"status":"sent"}' };
+    });
+    const service = makeRelayService(base, fetchMock);
+    const sent = await (service as any).sendViaRouteMobile('+256752478186', 'code');
+    expect(sent).toBe(true);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).endsWith('/auth/login'))).toHaveLength(2);
+  });
+
+  it('goes direct to Route Mobile when no relay is configured', async () => {
+    const { SMS_RML_RELAY_URL, SMS_RML_RELAY_PHONE, SMS_RML_RELAY_PASSWORD, ...direct } = base;
+    const fetchMock = jest.fn(async (_url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () => '1701|256752478186|abc',
+    }));
+    const service = makeRelayService(direct, fetchMock);
+    const sent = await (service as any).sendViaRouteMobile('+256752478186', 'code');
+    expect(sent).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('connectbind.com');
+  });
+});

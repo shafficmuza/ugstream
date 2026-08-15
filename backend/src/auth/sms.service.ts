@@ -113,6 +113,8 @@ const BALANCE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
   private lastBalanceCheck = 0;
+  /** Cached SMS-relay JWT (7-day life); cleared when the relay refuses it. */
+  private relayJwt: string | null = null;
 
   constructor(
     private readonly secrets: SecretsService,
@@ -123,7 +125,12 @@ export class SmsService {
   private async routingMode(): Promise<'auto' | SmsProvider> {
     const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
     const mode = s?.smsProvider;
-    return mode === 'twilio' || mode === 'africastalking' ? mode : 'auto';
+    // Every provider the admin screen offers must be honoured here. This
+    // listed only the original two, so choosing BulkSMS, Route Mobile or the
+    // custom gateway silently fell back to 'auto' — the setting appeared to
+    // save and then did nothing.
+    const forced: SmsProvider[] = ['routemobile', 'bulksms', 'africastalking', 'twilio', 'custom'];
+    return forced.includes(mode as SmsProvider) ? (mode as SmsProvider) : 'auto';
   }
 
   /** True once a given provider's credentials are all present. */
@@ -285,6 +292,15 @@ export class SmsService {
    * HTTP 200, so the status CODE is the truth and the HTTP status is noise.
    */
   private async sendViaRouteMobile(phone: string, message: string): Promise<boolean> {
+    // Route Mobile whitelists the account by source IP, and only the SMS Vibe
+    // server is on that list — the identical request answers 1701 from there
+    // and 18 from here. While that is true we hand the message to that server
+    // instead of to Route Mobile directly. Setting SMS_RML_RELAY_URL chooses
+    // the relay; clearing it goes straight to Route Mobile, which is the only
+    // change needed once this server's IP is whitelisted.
+    if (await this.secrets.get('SMS_RML_RELAY_URL')) {
+      return this.sendViaRelay(phone, message);
+    }
     const username = (await this.secrets.get('SMS_RML_USERNAME'))!;
     const password = (await this.secrets.get('SMS_RML_PASSWORD'))!;
     const endpoint =
@@ -313,6 +329,88 @@ export class SmsService {
     } catch (e: any) {
       this.logger.error(`RouteMobile unreachable for ${phone}: ${e?.message ?? e}`);
       return false;
+    }
+  }
+
+  /**
+   * Send through the SMS Vibe platform on the whitelisted server.
+   *
+   * That platform authenticates with a 7-day JWT, so the token is cached and
+   * re-fetched only when it is missing or refused. A relay hop is one more
+   * thing that can break, so a failure here returns false like any other
+   * gateway and the chain moves on to BulkSMS rather than losing the code.
+   */
+  private async sendViaRelay(phone: string, message: string): Promise<boolean> {
+    const base = (await this.secrets.get('SMS_RML_RELAY_URL'))!.replace(/\/$/, '');
+    const source = (await this.secrets.get('SMS_RML_SENDER_ID')) || 'PROMEDIA';
+
+    const post = async (token: string) =>
+      fetch(`${base}/sms/send`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient: phone.replace(/^\+/, ''),
+          message,
+          sender_id: source,
+        }),
+      });
+
+    try {
+      let token = await this.relayToken();
+      if (!token) return false;
+
+      let res = await post(token);
+      if (res.status === 401 || res.status === 403) {
+        // Token expired or the account was reset — one fresh login, once.
+        this.relayJwt = null;
+        token = await this.relayToken();
+        if (!token) return false;
+        res = await post(token);
+      }
+
+      const text = await res.text().catch(() => '');
+      if (!res.ok) {
+        this.logger.error(`SMS relay refused ${phone}: HTTP ${res.status} ${text.slice(0, 200)}`);
+        return false;
+      }
+      // The relay answers 200 with the per-message outcome in the body: a
+      // failed send is reported as {"status":"failed"}, which must not read
+      // as delivered.
+      if (/"status"\s*:\s*"failed"/i.test(text)) {
+        this.logger.error(`SMS relay could not send to ${phone}: ${text.slice(0, 200)}`);
+        return false;
+      }
+      return true;
+    } catch (e: any) {
+      this.logger.error(`SMS relay unreachable for ${phone}: ${e?.message ?? e}`);
+      return false;
+    }
+  }
+
+  /** Cached relay JWT, fetched on demand. */
+  private async relayToken(): Promise<string | null> {
+    if (this.relayJwt) return this.relayJwt;
+    try {
+      const base = (await this.secrets.get('SMS_RML_RELAY_URL'))!.replace(/\/$/, '');
+      const phone = await this.secrets.get('SMS_RML_RELAY_PHONE');
+      const password = await this.secrets.get('SMS_RML_RELAY_PASSWORD');
+      if (!phone || !password) return null;
+
+      const res = await fetch(`${base}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password }),
+      });
+      if (!res.ok) {
+        this.logger.error(`SMS relay login failed: HTTP ${res.status}`);
+        return null;
+      }
+      const json: any = await res.json();
+      this.relayJwt = typeof json?.token === 'string' ? json.token : null;
+      return this.relayJwt;
+    } catch (e: any) {
+      this.logger.error(`SMS relay login error: ${e?.message ?? e}`);
+      return null;
     }
   }
 
