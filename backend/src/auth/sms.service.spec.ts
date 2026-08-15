@@ -6,12 +6,15 @@ import { SmsService } from './sms.service';
  * Daily plan grosses, and routing the US to Africa's Talking simply doesn't
  * deliver. Neither shows up as an error in testing, so the table is pinned.
  */
-function makeService(configured: { at?: boolean; twilio?: boolean; bulksms?: boolean } = {}) {
+function makeService(
+  configured: { at?: boolean; twilio?: boolean; bulksms?: boolean; rml?: boolean } = {},
+) {
   const secrets: any = {
     isSet: jest.fn(async (key: string) => {
       if (key.startsWith('SMS_AT_')) return configured.at ?? false;
       if (key.startsWith('SMS_TWILIO_')) return configured.twilio ?? false;
       if (key.startsWith('SMS_BULKSMS_')) return configured.bulksms ?? false;
+      if (key.startsWith('SMS_RML_')) return configured.rml ?? false;
       return false;
     }),
     // Keyed rather than blanket, so a provider the test did not configure does
@@ -26,8 +29,24 @@ function makeService(configured: { at?: boolean; twilio?: boolean; bulksms?: boo
 describe('SmsService.routeFor (auto)', () => {
   const service = makeService();
 
+  it('sends Ugandan Airtel numbers to RouteMobile', () => {
+    // Proven on a handset 2026-08-15. 70/74/75 are Airtel UG.
+    expect(service.routeFor('+256752478186', 'auto')).toBe('routemobile');
+    expect(service.routeFor('+256701234567', 'auto')).toBe('routemobile');
+    expect(service.routeFor('+256742345678', 'auto')).toBe('routemobile');
+  });
+
+  it('keeps Ugandan MTN numbers OFF RouteMobile', () => {
+    // The whole point of the split: RouteMobile answered 1701 (success) for
+    // MTN and delivered nothing. Routing MTN there again would break every
+    // MTN sign-in with no error anywhere to show for it.
+    expect(service.routeFor('+256775200442', 'auto')).toBe('bulksms');
+    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms');
+    expect(service.routeFor('+256782345678', 'auto')).toBe('bulksms');
+  });
+
   it('sends Uganda and the rest of the world to BulkSMS', () => {
-    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms'); // Uganda
+    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms'); // Uganda MTN
     expect(service.routeFor('+254712345678', 'auto')).toBe('bulksms'); // Kenya
     expect(service.routeFor('+447911123456', 'auto')).toBe('bulksms'); // UK
     expect(service.routeFor('+971501234567', 'auto')).toBe('bulksms'); // UAE
@@ -82,12 +101,18 @@ describe('SmsService.isConfigured', () => {
 describe('SmsService.send', () => {
   const message = 'Your verification code is 123456.';
 
-  function withProviderSpies(configured: { at?: boolean; twilio?: boolean; bulksms?: boolean }) {
+  function withProviderSpies(configured: {
+    at?: boolean;
+    twilio?: boolean;
+    bulksms?: boolean;
+    rml?: boolean;
+  }) {
     const service = makeService(configured);
     const at = jest.spyOn(service as any, 'sendViaAfricasTalking').mockResolvedValue(true);
     const twilio = jest.spyOn(service as any, 'sendViaTwilio').mockResolvedValue(true);
     const bulk = jest.spyOn(service as any, 'sendViaBulkSms').mockResolvedValue(true);
-    return { service, at, twilio, bulk };
+    const rml = jest.spyOn(service as any, 'sendViaRouteMobile').mockResolvedValue(true);
+    return { service, at, twilio, bulk, rml };
   }
 
   it('uses the routed provider when it is configured', async () => {
@@ -115,12 +140,24 @@ describe('SmsService.send', () => {
     expect(bulk).toHaveBeenCalled();
   });
 
-  it('prefers Africa’s Talking over BulkSMS in Uganda when the primary is down', async () => {
-    // AT is the cheapest where it operates, so it leads the fallback order.
+  it('uses Africa’s Talking only when nothing else can carry the message', async () => {
+    // AT is last, not first. It accepts messages that never arrive, so it is
+    // the gateway of last resort rather than the cheap default it used to be.
     const { service, at, bulk } = withProviderSpies({ at: true });
     await service.send('+256772878614', message);
     expect(at).toHaveBeenCalled();
     expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it('prefers BulkSMS over Africa’s Talking when both are available', async () => {
+    // The ordering bug that cost a real sign-in: RouteMobile refused an
+    // Airtel number, the chain fell through to AT because it was cheapest,
+    // and the code was accepted and dropped while BulkSMS sat unused.
+    const { service, at, bulk, rml } = withProviderSpies({ at: true, bulksms: true, rml: true });
+    rml.mockResolvedValue(false);
+    await service.send('+256752478186', message);
+    expect(bulk).toHaveBeenCalled();
+    expect(at).not.toHaveBeenCalled();
   });
 
   it('pays more rather than dropping a login code when the cheap route is down', async () => {
@@ -152,11 +189,12 @@ describe('SmsService.send', () => {
       twilio: true,
     });
     bulk.mockResolvedValue(false);
-    at.mockResolvedValue(false);
     await service.send('+256772878614', message);
     expect(bulk).toHaveBeenCalled();
-    expect(at).toHaveBeenCalled();
-    expect(twilio).toHaveBeenCalled(); // paid, and worth it
+    // Twilio, not Africa's Talking: paying 30x is the right trade against a
+    // gateway that accepts the message and drops it.
+    expect(twilio).toHaveBeenCalled();
+    expect(at).not.toHaveBeenCalled();
   });
 
   it('stops at the first gateway that accepts the message', async () => {
@@ -176,6 +214,25 @@ describe('SmsService.send', () => {
     await service.send('+14155550123', message);
     expect(twilio).toHaveBeenCalled();
     expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it('never falls back to RouteMobile for an MTN number', async () => {
+    // Coverage is checked on the fallback too, so a BulkSMS outage cannot
+    // quietly divert MTN traffic onto the route that drops it.
+    const { service, bulk, rml, twilio } = withProviderSpies({ bulksms: true, rml: true });
+    bulk.mockResolvedValue(false);
+    await service.send('+256775200442', message);
+    expect(bulk).toHaveBeenCalled();
+    expect(rml).not.toHaveBeenCalled();
+    expect(twilio).not.toHaveBeenCalled(); // twilio isn't configured here
+  });
+
+  it('falls back to BulkSMS when RouteMobile drops an Airtel message', async () => {
+    const { service, rml, bulk } = withProviderSpies({ rml: true, bulksms: true });
+    rml.mockResolvedValue(false);
+    await service.send('+256752478186', message);
+    expect(rml).toHaveBeenCalled();
+    expect(bulk).toHaveBeenCalled();
   });
 
   it('sends nothing when no gateway is configured', async () => {

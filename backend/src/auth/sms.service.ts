@@ -3,7 +3,7 @@ import { SecretsService } from '../common/secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { callingCode } from './phone.util';
 
-export type SmsProvider = 'bulksms' | 'africastalking' | 'twilio' | 'custom';
+export type SmsProvider = 'routemobile' | 'bulksms' | 'africastalking' | 'twilio' | 'custom';
 
 /**
  * Country calling codes routed to Africa's Talking when routing is 'auto'.
@@ -46,6 +46,19 @@ const BULKSMS_EXCLUDED_MARKETS: Record<string, string> = {
 };
 
 /**
+ * Ugandan Airtel mobile prefixes — the ONLY numbers RouteMobile is trusted with.
+ *
+ * Tested live against both carriers on 2026-08-15: Airtel arrived, MTN did
+ * not. RouteMobile answered `1701` (its success code) for BOTH, so nothing in
+ * the response distinguishes the delivered message from the lost one. That is
+ * the worst shape a gateway failure can take — silent — and it is why this is
+ * a positive list of what was PROVEN rather than an exclusion list of what
+ * failed. MTN stays on BulkSMS until RouteMobile's MTN route is fixed;
+ * re-test on a handset before adding 77/78/76/39.
+ */
+const ROUTEMOBILE_AIRTEL_UG = /^\+256(70|74|75)/;
+
+/**
  * Warn once BulkSMS credit falls below this.
  *
  * Expressed in credits rather than messages because the per-message cost is
@@ -66,6 +79,7 @@ const BALANCE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
  *                    anything unparseable
  *   'africastalking' force Africa's Talking for every number
  *   'twilio'         force Twilio for every number
+ *   'routemobile'    force RouteMobile (only reaches Airtel Uganda)
  *   'bulksms'        force BulkSMS for every number
  *   'custom'         force the configurable gateway below
  *
@@ -114,6 +128,11 @@ export class SmsService {
 
   /** True once a given provider's credentials are all present. */
   async isProviderConfigured(provider: SmsProvider): Promise<boolean> {
+    if (provider === 'routemobile') {
+      return (
+        (await this.secrets.isSet('SMS_RML_USERNAME')) && (await this.secrets.isSet('SMS_RML_PASSWORD'))
+      );
+    }
     if (provider === 'bulksms') {
       return (
         (await this.secrets.isSet('SMS_BULKSMS_TOKEN_ID')) &&
@@ -152,10 +171,12 @@ export class SmsService {
    */
   routeFor(e164: string, mode: 'auto' | SmsProvider): SmsProvider {
     if (mode !== 'auto') return mode;
-    // BulkSMS is the default: it delivers to Uganda and to the diaspora from
-    // one account, at well under the Twilio international rate. Twilio takes
-    // the +1 numbers BulkSMS cannot reach, and anything unparseable, since a
-    // number we failed to read is safest on the gateway with global coverage.
+    // Airtel Uganda rides RouteMobile — the user's own platform, proven on
+    // that carrier and cheaper than BulkSMS's 9 credits. BulkSMS keeps MTN
+    // (confirmed DLR there) and the diaspora. Twilio takes the +1 numbers
+    // BulkSMS cannot reach, and anything unparseable, since a number we
+    // failed to read is safest on the gateway with global coverage.
+    if (ROUTEMOBILE_AIRTEL_UG.test(e164)) return 'routemobile';
     return this.canDeliverTo('bulksms', e164) ? 'bulksms' : 'twilio';
   }
 
@@ -171,6 +192,7 @@ export class SmsService {
   private canDeliverTo(provider: SmsProvider, e164: string): boolean {
     const code = callingCode(e164);
     if (!code) return provider === 'twilio'; // unparseable — only the global one
+    if (provider === 'routemobile') return ROUTEMOBILE_AIRTEL_UG.test(e164);
     if (provider === 'bulksms') return !BULKSMS_EXCLUDED_MARKETS[code];
     if (provider === 'africastalking') return Boolean(AFRICAS_TALKING_MARKETS[code]);
     return true; // Twilio is global; a custom gateway's coverage is unknowable
@@ -196,7 +218,15 @@ export class SmsService {
     // admin typed into a settings field and cannot be reasoned about — sending
     // an international number to a local gateway fails silently, which is the
     // trap this whole ordering exists to avoid.
-    const order: SmsProvider[] = ['africastalking', 'bulksms', 'twilio', 'custom'];
+    // Ordered by PROVEN delivery, not by price. Africa's Talking is last
+    // despite being the cheapest: it accepts messages and they do not arrive
+    // (its sender ID is still unregistered, and delivery dies downstream at
+    // the Ugandan carriers). It sat first here on cost grounds, so the first
+    // real failover — RouteMobile refusing an Airtel number — handed the code
+    // to the one gateway guaranteed not to deliver it, and the user got
+    // nothing while every log line said success. A cheap message that never
+    // arrives is not cheap; it is a lost sign-in.
+    const order: SmsProvider[] = ['routemobile', 'bulksms', 'twilio', 'custom', 'africastalking'];
     for (const fallback of order) {
       if (fallback === preferred) continue;
       if (!this.canDeliverTo(fallback, e164)) continue;
@@ -239,10 +269,51 @@ export class SmsService {
   }
 
   private async sendVia(provider: SmsProvider, phone: string, message: string): Promise<boolean> {
+    if (provider === 'routemobile') return this.sendViaRouteMobile(phone, message);
     if (provider === 'bulksms') return this.sendViaBulkSms(phone, message);
     if (provider === 'custom') return this.sendViaCustom(phone, message);
     if (provider === 'twilio') return this.sendViaTwilio(phone, message);
     return this.sendViaAfricasTalking(phone, message);
+  }
+
+  /**
+   * Route Mobile, via the credentials of the user's own SMS Vibe platform.
+   *
+   * One GET; the reply is `statusCode|destination|messageId`, where 1701 is
+   * the only success. Everything else — wrong credentials (1703/1704),
+   * dead balance, unknown destination — comes back as a different code on an
+   * HTTP 200, so the status CODE is the truth and the HTTP status is noise.
+   */
+  private async sendViaRouteMobile(phone: string, message: string): Promise<boolean> {
+    const username = (await this.secrets.get('SMS_RML_USERNAME'))!;
+    const password = (await this.secrets.get('SMS_RML_PASSWORD'))!;
+    const endpoint =
+      (await this.secrets.get('SMS_RML_ENDPOINT')) || 'https://dstr.connectbind.com:8443/sendsms';
+    const source = (await this.secrets.get('SMS_RML_SENDER_ID')) || 'PROMEDIA';
+
+    // RouteMobile wants bare digits, no '+'.
+    const destination = phone.replace(/^\+/, '');
+    const params = new URLSearchParams({
+      username,
+      password,
+      type: '0',
+      dlr: '1',
+      destination,
+      source,
+      message,
+    });
+
+    try {
+      const res = await fetch(`${endpoint}?${params}`);
+      const text = (await res.text().catch(() => '')).trim();
+      const code = text.split('|')[0]?.trim();
+      if (code === '1701') return true;
+      this.logger.error(`RouteMobile refused ${phone}: ${text.slice(0, 200) || `HTTP ${res.status}`}`);
+      return false;
+    } catch (e: any) {
+      this.logger.error(`RouteMobile unreachable for ${phone}: ${e?.message ?? e}`);
+      return false;
+    }
   }
 
   /**

@@ -23,8 +23,13 @@ type FormState = Pick<
 const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
   {
     value: 'auto',
-    label: 'Automatic — BulkSMS, with Twilio for US/Canada (recommended)',
-    hint: 'BulkSMS carries Uganda and the rest of the world from one account. It does not deliver to the USA or Canada, so those numbers (+1) go to Twilio automatically. If a gateway has no credentials, the next one that can reach the number is used instead.',
+    label: 'Automatic — best route per network (recommended)',
+    hint: 'Ugandan Airtel numbers (070/074/075) go via Route Mobile. Everything else — including Ugandan MTN — goes via BulkSMS, and +1 numbers via Twilio, which BulkSMS does not serve. Route Mobile is deliberately NOT used for MTN: it reports success and delivers nothing on that network. If a gateway has no credentials, the next one that can reach the number is used instead.',
+  },
+  {
+    value: 'routemobile',
+    label: 'Route Mobile only (Airtel Uganda)',
+    hint: 'Every code is sent through Route Mobile. MTN numbers still route to BulkSMS regardless — Route Mobile accepts MTN traffic and silently drops it, so forcing it there would break MTN sign-in with no visible error.',
   },
   {
     value: 'bulksms',
@@ -49,6 +54,7 @@ const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
 ];
 
 const SMS_PROVIDER_LABELS: Record<string, string> = {
+  routemobile: 'Route Mobile — Airtel Uganda (070/074/075)',
   bulksms: 'BulkSMS — Uganda and worldwide except USA/Canada',
   africastalking: "Africa's Talking — East African numbers",
   twilio: 'Twilio — international numbers',
@@ -57,6 +63,10 @@ const SMS_PROVIDER_LABELS: Record<string, string> = {
 
 /** What each custom-gateway field is for, shown beside its input. */
 const SMS_CUSTOM_HINTS: Record<string, string> = {
+  SMS_RML_USERNAME: 'Route Mobile account username (same credentials as the SMS Vibe platform).',
+  SMS_RML_PASSWORD: 'Route Mobile account password.',
+  SMS_RML_ENDPOINT: 'Defaults to https://dstr.connectbind.com:8443/sendsms',
+  SMS_RML_SENDER_ID: 'Sender name shown on the handset, e.g. PROMEDIA.',
   SMS_BULKSMS_TOKEN_ID: 'From BulkSMS → Settings → Advanced → API tokens. Not your account username.',
   SMS_BULKSMS_TOKEN_SECRET: 'Shown once when the token is created. Revoke and reissue here if it leaks.',
   SMS_BULKSMS_SENDER_ID:

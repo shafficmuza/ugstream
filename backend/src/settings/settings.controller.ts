@@ -46,6 +46,7 @@ function imageUpload(destination: string, maxSizeBytes: number) {
 
 // Whitelisted SMS credential keys per gateway — the only keys the UI can set.
 const SMS_PROVIDER_KEYS: Record<string, string[]> = {
+  routemobile: ['SMS_RML_USERNAME', 'SMS_RML_PASSWORD', 'SMS_RML_ENDPOINT', 'SMS_RML_SENDER_ID'],
   bulksms: ['SMS_BULKSMS_TOKEN_ID', 'SMS_BULKSMS_TOKEN_SECRET', 'SMS_BULKSMS_SENDER_ID'],
   africastalking: ['SMS_AT_USERNAME', 'SMS_AT_API_KEY', 'SMS_AT_SENDER_ID', 'SMS_AT_ENV'],
   twilio: ['SMS_TWILIO_ACCOUNT_SID', 'SMS_TWILIO_AUTH_TOKEN', 'SMS_TWILIO_FROM'],
