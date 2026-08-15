@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../core/api_client.dart';
 import '../core/auth.dart';
+import '../core/store_policy.dart';
 import '../models/models.dart';
 import '../services/catalog.dart';
 import '../widgets/cast_button.dart';
@@ -38,7 +39,13 @@ class PlayerScreen extends StatefulWidget {
       if (context.mounted) Navigator.of(context).pop();
       if (e.statusCode == 402) {
         if (context.mounted) {
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen()));
+          // iOS builds carry no purchase flow (see store_policy.dart) — the
+          // viewer gets told, not sold.
+          if (purchasesAllowed) {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen()));
+          } else {
+            showNotEntitledNotice(context);
+          }
         }
       } else if (e.statusCode == 409 && context.mounted) {
         // Concurrent-stream limit. Entitled, just watching elsewhere — offer a

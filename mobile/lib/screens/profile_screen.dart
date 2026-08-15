@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/auth.dart';
+import '../core/store_policy.dart';
 import 'subscribe_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -178,12 +179,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: TextStyle(fontSize: 12, color: Colors.white54)),
               onTap: () => _removePin(context),
             ),
-          ListTile(
-            leading: const Icon(Icons.card_membership),
-            title: const Text('Subscribe / manage plan'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen())),
-          ),
+          // Absent on iOS rather than disabled: a visible entry to a purchase
+          // is itself a "call to action" under guideline 3.1.1.
+          if (purchasesAllowed)
+            ListTile(
+              leading: const Icon(Icons.card_membership),
+              title: const Text('Subscribe / manage plan'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen())),
+            ),
           // Push state, surfaced because a store build cannot be attached to a
           // debugger: without this, a handset that fails to register is
           // invisible from both ends.
