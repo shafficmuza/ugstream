@@ -1,4 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
+// `hide`: its transitive flutter_cache_manager also exports a
+// DownloadProgress, colliding with ours.
+import 'package:cached_network_image/cached_network_image.dart' hide DownloadProgress;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../core/auth.dart';
