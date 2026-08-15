@@ -18,6 +18,11 @@ category as other video apps; it was not designed around the Kids category
 requirements, and we agree it does not belong there. The parental-gate
 requirements for external links and sharing therefore no longer apply.
 
+For completeness: both cited surfaces — the web view and the AirDrop option in
+its share toolbar — belonged to the in-app payment flow, which has been
+removed entirely in this build (see 3.1.1 below). The app now contains no web
+views, no external links, and no share functionality of any kind.
+
 **Guideline 3.1.1 — In-App Purchase**
 
 The new build contains no way to purchase anything. We have removed the plans
