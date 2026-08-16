@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../core/api_client.dart';
 import '../core/auth.dart';
+import '../core/screen_awake.dart';
 import '../core/store_policy.dart';
 import 'dart:io' show File;
 import '../models/models.dart';
@@ -157,6 +158,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       // Actually backgrounded. iOS has stopped the video already; pausing
       // keeps our own state honest so the button is right on return.
       _video?.pause();
+      // Android clears the window flag on background anyway; releasing here
+      // keeps our own bookkeeping in step so playback re-arms it on return.
+      ScreenAwake.release();
       _saveProgress();
     } else if (state == AppLifecycleState.inactive) {
       // Transient: Control Centre, a notification banner, the AirPlay route
@@ -235,6 +239,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _recover();
     }
     if (!mounted || value == null) return;
+
+    // Hold the display on exactly while playing. Driven from the player's own
+    // state rather than from "the player screen is open", so pausing lets the
+    // phone sleep normally and a buffering stall does not drop the flag.
+    ScreenAwake.set(value.isPlaying);
 
     // Repaint only when something the UI actually shows has changed.
     final second = value.position.inSeconds;
@@ -398,6 +407,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
     _hideTimer?.cancel();
+    ScreenAwake.release();
     _video?.removeListener(_onTick);
     _video?.dispose();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
