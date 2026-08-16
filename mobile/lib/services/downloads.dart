@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'package:dio/dio.dart';
+
 import '../core/api_client.dart';
 
 /// One saved video and what is known about it.
@@ -38,6 +40,21 @@ class DownloadEntry {
 
   bool get stillValid => DateTime.now().isBefore(validUntil);
 
+  /// How long this copy may still be watched offline, in words. Netflix shows
+  /// this because the alternative — discovering it on a plane — is the moment
+  /// people stop trusting downloads.
+  String get expiryLabel {
+    final left = validUntil.difference(DateTime.now());
+    if (left.isNegative) return 'Expired';
+    // Rounded up, not truncated: 8 days and 23 hours is "9 days" to a person,
+    // and truncating always under-reports the time they actually have.
+    final days = (left.inMinutes / (60 * 24)).ceil();
+    if (days >= 2) return 'Expires in $days days';
+    final hours = (left.inMinutes / 60).ceil();
+    if (hours >= 2) return 'Expires in $hours hours';
+    return 'Expires soon';
+  }
+
   Map<String, dynamic> toJson() => {
         'episodeId': episodeId,
         'titleId': titleId,
@@ -63,6 +80,14 @@ class DownloadEntry {
       );
 }
 
+/// Bytes as a person would say them.
+String formatBytes(int bytes) {
+  if (bytes >= 1 << 30) return '${(bytes / (1 << 30)).toStringAsFixed(1)} GB';
+  if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).toStringAsFixed(0)} MB';
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  return '$bytes B';
+}
+
 /// Progress of a download in flight, for the UI to render.
 class DownloadProgress {
   DownloadProgress(this.received, this.total, {this.preparing = false, this.queued = false});
@@ -84,7 +109,11 @@ class DownloadProgress {
     if (queued) return 'Queued';
     if (preparing) return 'Preparing…';
     if (total <= 0) return 'Downloading…';
-    return 'Downloading ${(fraction * 100).round()}%';
+    final pct = 'Downloading ${(fraction * 100).round()}%';
+    // Sizes are reassuring on a video and noise on anything small — a
+    // percentage alone on a 700MB film reads as stalled.
+    if (total < 1 << 20) return pct;
+    return '$pct · ${formatBytes(received)} of ${formatBytes(total)}';
   }
 }
 
@@ -122,6 +151,8 @@ class DownloadsStore extends ChangeNotifier {
   /// Metadata for everything queued or transferring, so the Downloads screen
   /// can list work in progress and not just finished files.
   final Map<String, _DownloadJob> _pending = {};
+  /// Live transfers, so a download can be stopped mid-flight.
+  final Map<String, CancelToken> _cancels = {};
   bool _draining = false;
   bool _loaded = false;
 
@@ -173,6 +204,15 @@ class DownloadsStore extends ChangeNotifier {
         // Drop entries whose file vanished (OS cleared storage, user cleared
         // data) so the screen never lists a ghost it cannot play.
         _entries.removeWhere((e) => !File(e.filePath).existsSync());
+      }
+
+      // Sweep partial files left by a download that was killed with the app.
+      // Nothing resumes them across launches, so they are pure wasted space.
+      final dir = await _dir();
+      await for (final f in dir.list()) {
+        if (f is File && f.path.endsWith('.part')) {
+          await f.delete().catchError((_) => f);
+        }
       }
     } catch (_) {
       // A corrupt index loses the list, not the videos; re-downloading is the
@@ -279,18 +319,11 @@ class DownloadsStore extends ChangeNotifier {
       waited += step;
     }
 
-    // Phase 2: the bytes.
+    // Phase 2: the bytes, resumably.
     final dir = await _dir();
     final path = '${dir.path}/$episodeId.mp4';
     final tmpPath = '$path.part';
-    await _api.dio.download(
-      info['url'] as String,
-      tmpPath,
-      onReceiveProgress: (received, total) {
-        _inFlight[episodeId] = DownloadProgress(received, total);
-        notifyListeners();
-      },
-    );
+    await _transfer(episodeId, info['url'] as String, tmpPath);
     await File(tmpPath).rename(path);
 
     _entries.add(DownloadEntry(
@@ -306,6 +339,90 @@ class DownloadsStore extends ChangeNotifier {
     ));
     await _persist();
   }
+
+  /// Fetch [url] into [tmpPath], resuming a partial file and retrying a
+  /// dropped connection.
+  ///
+  /// Written by hand rather than handed to Dio's `download` because all three
+  /// behaviours matter on a Ugandan mobile connection and none is free: a
+  /// 700MB film that restarts from zero every time the signal dips will never
+  /// finish, and the data it wasted was paid for.
+  Future<void> _transfer(String episodeId, String url, String tmpPath) async {
+    final file = File(tmpPath);
+    const maxAttempts = 4;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      final already = await file.exists() ? await file.length() : 0;
+      final token = CancelToken();
+      _cancels[episodeId] = token;
+
+      try {
+        final res = await _api.dio.get<ResponseBody>(
+          url,
+          cancelToken: token,
+          options: Options(
+            responseType: ResponseType.stream,
+            followRedirects: true,
+            // Ask only for the part we are missing. A server that honours it
+            // answers 206; one that ignores it answers 200 with the whole
+            // file, which is handled below rather than silently appended to
+            // what we already had — that would corrupt the video.
+            headers: already > 0 ? {'range': 'bytes=$already-'} : null,
+            validateStatus: (code) => code != null && code >= 200 && code < 400,
+          ),
+        );
+
+        final resumed = res.statusCode == 206 && already > 0;
+        final sink = file.openWrite(mode: resumed ? FileMode.append : FileMode.write);
+        var received = resumed ? already : 0;
+
+        // Content-Length covers only the remaining bytes on a 206.
+        final lenHeader = res.headers.value(Headers.contentLengthHeader);
+        final remaining = int.tryParse(lenHeader ?? '') ?? -1;
+        final total = remaining < 0 ? -1 : (resumed ? already + remaining : remaining);
+
+        try {
+          await for (final chunk in res.data!.stream) {
+            sink.add(chunk);
+            received += chunk.length;
+            _inFlight[episodeId] = DownloadProgress(received, total);
+            notifyListeners();
+          }
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+        _cancels.remove(episodeId);
+        return;
+      } on DioException catch (e) {
+        _cancels.remove(episodeId);
+        if (CancelToken.isCancel(e)) rethrow;
+        if (attempt == maxAttempts) rethrow;
+        // Keep the partial file: the next attempt resumes from it.
+        _inFlight[episodeId] = DownloadProgress(already, -1);
+        notifyListeners();
+        await Future.delayed(Duration(seconds: attempt * 3));
+      }
+    }
+  }
+
+  /// Stop a download and discard what has been fetched so far.
+  Future<void> cancel(String episodeId) async {
+    _queue.removeWhere((j) => j.episodeId == episodeId);
+    _cancels.remove(episodeId)?.cancel('cancelled by user');
+    _inFlight.remove(episodeId);
+    final job = _pending.remove(episodeId);
+    if (job != null && !job.completer.isCompleted) job.completer.complete();
+    try {
+      final dir = await _dir();
+      final part = File('${dir.path}/$episodeId.mp4.part');
+      if (await part.exists()) await part.delete();
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Total bytes held by finished downloads.
+  int get totalBytes => _entries.fold(0, (sum, e) => sum + e.sizeBytes);
 
   Future<void> delete(String episodeId) async {
     final i = _entries.indexWhere((e) => e.episodeId == episodeId);

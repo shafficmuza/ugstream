@@ -97,7 +97,11 @@ class _DownloadButton extends StatelessWidget {
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
-          onPressed: done || progress != null ? null : () => _start(context),
+          onPressed: done
+              ? null
+              : progress != null
+                  ? () => context.read<DownloadsStore>().cancel(episodeId)
+                  : () => _start(context),
           icon: done
               ? const Icon(Icons.download_done)
               : progress != null
@@ -124,7 +128,17 @@ class _DownloadButton extends StatelessWidget {
       );
     }
     if (progress != null) {
-      return SizedBox(width: 48, height: 48, child: Center(child: _ring(progress)));
+      // Tappable while running, so a download started by mistake — or one
+      // eating a data bundle — can be stopped where it is shown.
+      return SizedBox(
+        width: 48,
+        height: 48,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => context.read<DownloadsStore>().cancel(episodeId),
+          child: Center(child: _ring(progress)),
+        ),
+      );
     }
     return IconButton(
       constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
@@ -132,6 +146,33 @@ class _DownloadButton extends StatelessWidget {
       onPressed: () => _start(context),
     );
   }
+}
+
+/// Queue one episode, routing a refusal exactly as a refused play is routed.
+void _downloadEpisode(BuildContext context, TitleDetail t, Episode e) {
+  final store = context.read<DownloadsStore>();
+  store
+      .download(
+        episodeId: e.id,
+        titleId: t.id,
+        titleName: t.name,
+        episodeLabel: e.name ?? 'Episode ${e.number}',
+        posterUrl: t.posterUrl,
+      )
+      .catchError((err) {
+    if (!context.mounted) return;
+    if (err is ApiException && err.statusCode == 402) {
+      if (purchasesAllowed) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscribeScreen()));
+      } else {
+        showNotEntitledNotice(context);
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download failed. Check your connection and try again.')),
+      );
+    }
+  });
 }
 
 class _TitleScreenState extends State<TitleScreen> {
@@ -215,7 +256,32 @@ class _TitleScreenState extends State<TitleScreen> {
                     ],
                     if (t.kind == 'series' && t.episodes.isNotEmpty) ...[
                       const SizedBox(height: 20),
-                      const Text('Episodes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Episodes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                          // Downloading a series one tap at a time is the
+                          // tedious way; they queue, so asking for all of
+                          // them is safe.
+                          Builder(builder: (context) {
+                            final store = context.watch<DownloadsStore>();
+                            final pending = t.episodes
+                                .where((e) => e.ready && !store.isDownloaded(e.id) && store.progressOf(e.id) == null)
+                                .toList();
+                            if (pending.isEmpty) return const SizedBox.shrink();
+                            return TextButton.icon(
+                              onPressed: () {
+                                for (final e in pending) {
+                                  _downloadEpisode(context, t, e);
+                                }
+                              },
+                              icon: const Icon(Icons.download_outlined, size: 18),
+                              label: Text('Download all (${pending.length})'),
+                              style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                            );
+                          }),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       for (final e in t.episodes)
                         ListTile(
