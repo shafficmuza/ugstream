@@ -156,6 +156,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (_msg != null) ...[const SizedBox(height: 10), Text(_msg!, style: const TextStyle(color: Colors.white70))],
           const SizedBox(height: 16),
           FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
+          // Only shown when the account is on a non-standard catalogue. An
+          // ordinary viewer sees nothing here; someone whose catalogue looks
+          // wrong finds out why without anyone querying the database.
+          if (u?.audienceLabel != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFE50914), width: 1),
+              ),
+              child: Row(children: [
+                const Icon(Icons.visibility_outlined, size: 18, color: Color(0xFFE50914)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(u!.audienceLabel!,
+                      style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                ),
+              ]),
+            ),
+          ],
           const Divider(height: 40),
           // The PIN is what keeps a returning sign-in free, so changing and
           // removing it both live in plain sight rather than buried.

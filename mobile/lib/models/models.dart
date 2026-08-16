@@ -11,6 +11,8 @@ class User {
     this.address,
     required this.role,
     this.pinSet = false,
+    this.isTester = false,
+    this.canPreviewAll = false,
   });
   final String id;
   final String phone;
@@ -23,6 +25,20 @@ class User {
   /// reports that one exists.
   final bool pinSet;
 
+  /// Which catalogue this account is served. Shown in Profile when either is
+  /// set, because an account quietly on the wrong one looks exactly like a
+  /// broken app: the catalogue is simply the wrong size, with nothing on
+  /// screen to explain why.
+  final bool isTester;
+  final bool canPreviewAll;
+
+  /// Null for an ordinary account — nothing worth saying.
+  String? get audienceLabel {
+    if (canPreviewAll) return 'Early access — you see titles before they are published';
+    if (isTester) return 'Test account — you see the test catalogue only';
+    return null;
+  }
+
   factory User.fromJson(Map<String, dynamic> j) => User(
         id: j['id'].toString(),
         phone: j['phone'] ?? '',
@@ -31,6 +47,8 @@ class User {
         address: j['address'],
         role: j['role'] ?? 'user',
         pinSet: j['pinSet'] == true,
+        isTester: j['isTester'] == true,
+        canPreviewAll: j['canPreviewAll'] == true,
       );
 }
 

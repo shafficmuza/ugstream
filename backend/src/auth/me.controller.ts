@@ -38,6 +38,8 @@ export class MeController {
     address: string | null;
     role: string;
     pinHash?: string | null;
+    isTester?: boolean;
+    canPreviewAll?: boolean;
   }) {
     return {
       id: user.id.toString(),
@@ -46,6 +48,12 @@ export class MeController {
       email: user.email,
       address: user.address,
       role: user.role,
+      // Which catalogue this account is served. Absent from this payload
+      // until now, which made a misplaced flag invisible from inside the app:
+      // early access granted to a mistyped number looked identical to a bug
+      // in the guards, and could only be told apart by querying the database.
+      isTester: Boolean(user.isTester),
+      canPreviewAll: Boolean(user.canPreviewAll),
       // Never the PIN itself — only whether one exists, so the account screen
       // can offer "set" or "change" without the hash ever leaving the server.
       pinSet: Boolean(user.pinHash),
