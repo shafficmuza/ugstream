@@ -103,13 +103,26 @@ class HomeData {
 }
 
 class Episode {
-  Episode({required this.id, required this.season, required this.number, this.name, required this.cfStatus, this.durationSecs});
+  Episode({
+    required this.id,
+    required this.season,
+    required this.number,
+    this.name,
+    required this.cfStatus,
+    this.durationSecs,
+    this.thumbnailUrl,
+  });
   final String id;
   final int season;
   final int number;
   final String? name;
   final String cfStatus;
   final int? durationSecs;
+
+  /// Still frame picked from the episode itself. Served relative
+  /// ("/api/v1/episodes/9/thumbnail"), so it has to be made absolute — a
+  /// native app has no page origin to resolve it against.
+  final String? thumbnailUrl;
 
   factory Episode.fromJson(Map<String, dynamic> j) => Episode(
         id: j['id'].toString(),
@@ -118,8 +131,17 @@ class Episode {
         name: j['name'],
         cfStatus: j['cfStatus'] ?? 'pending',
         durationSecs: j['durationSecs'],
+        thumbnailUrl: AppConfig.absUrl(j['thumbnailUrl']),
       );
   bool get ready => cfStatus == 'ready';
+
+  /// Runtime as "42 min", or null when the server does not know it.
+  String? get runtimeLabel {
+    final s = durationSecs;
+    if (s == null || s <= 0) return null;
+    final mins = (s / 60).round();
+    return mins >= 60 ? '${mins ~/ 60}h ${mins % 60}m' : '$mins min';
+  }
 }
 
 class TitleDetail {

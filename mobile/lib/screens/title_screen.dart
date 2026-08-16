@@ -285,9 +285,38 @@ class _TitleScreenState extends State<TitleScreen> {
                       const SizedBox(height: 8),
                       for (final e in t.episodes)
                         ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(backgroundColor: const Color(0xFF1A1A1A), child: Text('${e.number}')),
-                          title: Text(e.name ?? 'Episode ${e.number}'),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                          minVerticalPadding: 0,
+                          // A still from the episode, the way every video app
+                          // presents an episode list — the bare number circle
+                          // gave a viewer nothing to recognise a scene by.
+                          // Falls back to the number when there is no frame.
+                          leading: SizedBox(
+                            width: 104,
+                            height: 58,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: e.thumbnailUrl != null
+                                  ? CachedNetworkImage(
+                                      imageUrl: e.thumbnailUrl!,
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) => Container(color: const Color(0xFF1A1A1A)),
+                                      errorWidget: (_, __, ___) => Container(
+                                        color: const Color(0xFF1A1A1A),
+                                        alignment: Alignment.center,
+                                        child: Text('${e.number}',
+                                            style: const TextStyle(color: Colors.white54)),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: const Color(0xFF1A1A1A),
+                                      alignment: Alignment.center,
+                                      child: Text('${e.number}',
+                                          style: const TextStyle(color: Colors.white54)),
+                                    ),
+                            ),
+                          ),
+                          title: Text('${e.number}. ${e.name ?? 'Episode ${e.number}'}'),
                           // The download's own words when there is a download
                           // to talk about. A bare ring here told the viewer
                           // nothing: an episode waiting minutes for Cloudflare
@@ -303,9 +332,14 @@ class _TitleScreenState extends State<TitleScreen> {
                                 ),
                               );
                             }
+                            if (!e.ready) {
+                              return const Text('Processing…',
+                                  style: TextStyle(color: Colors.orangeAccent, fontSize: 12));
+                            }
+                            final runtime = e.runtimeLabel;
                             return Text(
-                              e.ready ? 'Ready' : 'Processing…',
-                              style: TextStyle(color: e.ready ? Colors.white54 : Colors.orangeAccent),
+                              runtime ?? 'Ready',
+                              style: const TextStyle(color: Colors.white54, fontSize: 12),
                             );
                           }),
                           trailing: e.ready
