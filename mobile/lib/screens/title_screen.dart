@@ -93,13 +93,7 @@ class _DownloadButton extends StatelessWidget {
       // One full-width surface — icon, word and progress are all the same
       // button, so there is nothing dead to tap. The compact icon-only form
       // taught users to tap the word "Download", which did nothing.
-      final label = done
-          ? 'Downloaded'
-          : progress == null
-              ? 'Download'
-              : progress.preparing
-                  ? 'Preparing…'
-                  : 'Downloading ${(progress.fraction * 100).round()}%';
+      final label = store.statusLabel(episodeId) ?? 'Download';
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
@@ -228,7 +222,26 @@ class _TitleScreenState extends State<TitleScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: CircleAvatar(backgroundColor: const Color(0xFF1A1A1A), child: Text('${e.number}')),
                           title: Text(e.name ?? 'Episode ${e.number}'),
-                          subtitle: Text(e.ready ? 'Ready' : 'Processing…', style: TextStyle(color: e.ready ? Colors.white54 : Colors.orangeAccent)),
+                          // The download's own words when there is a download
+                          // to talk about. A bare ring here told the viewer
+                          // nothing: an episode waiting minutes for Cloudflare
+                          // to build its MP4 looked identical to one stuck.
+                          subtitle: Builder(builder: (context) {
+                            final status = context.watch<DownloadsStore>().statusLabel(e.id);
+                            if (status != null) {
+                              return Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: status == 'Downloaded' ? Colors.white54 : const Color(0xFFE50914),
+                                ),
+                              );
+                            }
+                            return Text(
+                              e.ready ? 'Ready' : 'Processing…',
+                              style: TextStyle(color: e.ready ? Colors.white54 : Colors.orangeAccent),
+                            );
+                          }),
                           trailing: e.ready
                               ? Row(mainAxisSize: MainAxisSize.min, children: [
                                   _DownloadButton(

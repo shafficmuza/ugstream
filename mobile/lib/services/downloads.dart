@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -64,14 +65,45 @@ class DownloadEntry {
 
 /// Progress of a download in flight, for the UI to render.
 class DownloadProgress {
-  DownloadProgress(this.received, this.total, {this.preparing = false});
+  DownloadProgress(this.received, this.total, {this.preparing = false, this.queued = false});
   final int received;
   final int total;
 
   /// Cloudflare is still producing the MP4 rendition — nothing to fetch yet.
+  /// This takes minutes per episode, which is why it needs to be said out
+  /// loud rather than left as a spinning ring.
   final bool preparing;
 
+  /// Waiting for the transfer ahead of it to finish.
+  final bool queued;
+
   double get fraction => total > 0 ? received / total : 0;
+
+  /// What the viewer should be told, in a couple of words.
+  String get label {
+    if (queued) return 'Queued';
+    if (preparing) return 'Preparing…';
+    if (total <= 0) return 'Downloading…';
+    return 'Downloading ${(fraction * 100).round()}%';
+  }
+}
+
+/// One queued request, with the future its caller is awaiting.
+class _DownloadJob {
+  _DownloadJob({
+    required this.episodeId,
+    required this.titleId,
+    required this.titleName,
+    required this.episodeLabel,
+    required this.posterUrl,
+    required this.completer,
+  });
+  final String episodeId;
+  final String titleId;
+  final String titleName;
+  final String episodeLabel;
+  final String? posterUrl;
+  final Completer<void> completer;
 }
 
 /// Owns every offline copy on this device: the files, the index that
@@ -86,11 +118,38 @@ class DownloadsStore extends ChangeNotifier {
 
   final List<DownloadEntry> _entries = [];
   final Map<String, DownloadProgress> _inFlight = {};
+  final List<_DownloadJob> _queue = [];
+  /// Metadata for everything queued or transferring, so the Downloads screen
+  /// can list work in progress and not just finished files.
+  final Map<String, _DownloadJob> _pending = {};
+  bool _draining = false;
   bool _loaded = false;
 
   List<DownloadEntry> get entries => List.unmodifiable(_entries);
   DownloadProgress? progressOf(String episodeId) => _inFlight[episodeId];
   bool isDownloaded(String episodeId) => _entries.any((e) => e.episodeId == episodeId);
+
+  /// Downloads that are queued or transferring right now, in queue order.
+  List<({String episodeId, String titleName, String episodeLabel, String? posterUrl, DownloadProgress progress})>
+      get inFlight => [
+            for (final id in _pending.keys)
+              if (_inFlight[id] != null)
+                (
+                  episodeId: id,
+                  titleName: _pending[id]!.titleName,
+                  episodeLabel: _pending[id]!.episodeLabel,
+                  posterUrl: _pending[id]!.posterUrl,
+                  progress: _inFlight[id]!,
+                ),
+          ];
+
+  /// One line describing this episode's download state, or null when there is
+  /// nothing to say. Every surface uses this, so a queued episode in a series
+  /// list reads the same as one on a film page.
+  String? statusLabel(String episodeId) {
+    if (isDownloaded(episodeId)) return 'Downloaded';
+    return _inFlight[episodeId]?.label;
+  }
 
   Future<Directory> _dir() async {
     final docs = await getApplicationDocumentsDirectory();
@@ -144,59 +203,108 @@ class DownloadsStore extends ChangeNotifier {
     required String titleName,
     required String episodeLabel,
     String? posterUrl,
-  }) async {
-    if (isDownloaded(episodeId) || _inFlight.containsKey(episodeId)) return;
+  }) {
+    if (isDownloaded(episodeId) || _inFlight.containsKey(episodeId)) {
+      return Future.value();
+    }
+
+    // Queued, not started. Transfers run one at a time: tapping six episodes
+    // of a series used to start six competing downloads, so every one of them
+    // crawled and the ring on each looked stuck.
+    final job = _DownloadJob(
+      episodeId: episodeId,
+      titleId: titleId,
+      titleName: titleName,
+      episodeLabel: episodeLabel,
+      posterUrl: posterUrl,
+      completer: Completer<void>(),
+    );
+    _queue.add(job);
+    _pending[episodeId] = job;
+    _inFlight[episodeId] = DownloadProgress(0, 0, queued: _queue.length > 1 || _draining);
+    notifyListeners();
+
+    // The caller keeps its own future, so a 402 on one episode still reaches
+    // the button that was tapped rather than whichever download is running.
+    unawaited(_drain());
+    return job.completer.future;
+  }
+
+  Future<void> _drain() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      while (_queue.isNotEmpty) {
+        final job = _queue.removeAt(0);
+        try {
+          await _run(job);
+          if (!job.completer.isCompleted) job.completer.complete();
+        } catch (e, st) {
+          if (!job.completer.isCompleted) job.completer.completeError(e, st);
+        } finally {
+          _inFlight.remove(job.episodeId);
+          _pending.remove(job.episodeId);
+          // Whatever is now at the head of the queue stops being 'queued'.
+          if (_queue.isNotEmpty) {
+            final next = _queue.first.episodeId;
+            _inFlight[next] = DownloadProgress(0, 0, preparing: true);
+          }
+          notifyListeners();
+        }
+      }
+    } finally {
+      _draining = false;
+    }
+  }
+
+  Future<void> _run(_DownloadJob job) async {
+    final episodeId = job.episodeId;
     _inFlight[episodeId] = DownloadProgress(0, 0, preparing: true);
     notifyListeners();
 
-    try {
-      // Phase 1: the rendition. Bounded: renditions for a feature film take
-      // single-digit minutes; half an hour of "preparing" is a fault.
-      Map<String, dynamic> info;
-      var waited = Duration.zero;
-      while (true) {
-        final res = await _api.request('/episodes/$episodeId/download', method: 'POST');
-        info = (res.data as Map).cast<String, dynamic>();
-        if (info['status'] == 'ready') break;
-        if (waited > const Duration(minutes: 30)) {
-          throw ApiException(504, 'The download could not be prepared. Try again later.', null);
-        }
-        const step = Duration(seconds: 10);
-        await Future.delayed(step);
-        waited += step;
+    // Phase 1: the rendition. Cloudflare builds one MP4 per video on first
+    // request and it takes minutes, so this phase is announced rather than
+    // left as an unexplained spinner. Bounded: half an hour is a fault.
+    Map<String, dynamic> info;
+    var waited = Duration.zero;
+    while (true) {
+      final res = await _api.request('/episodes/$episodeId/download', method: 'POST');
+      info = (res.data as Map).cast<String, dynamic>();
+      if (info['status'] == 'ready') break;
+      if (waited > const Duration(minutes: 30)) {
+        throw ApiException(504, 'The download could not be prepared. Try again later.', null);
       }
-
-      // Phase 2: the bytes.
-      final dir = await _dir();
-      final path = '${dir.path}/$episodeId.mp4';
-      final tmpPath = '$path.part';
-      await _api.dio.download(
-        info['url'] as String,
-        tmpPath,
-        onReceiveProgress: (received, total) {
-          _inFlight[episodeId] = DownloadProgress(received, total);
-          notifyListeners();
-        },
-      );
-      final file = File(tmpPath);
-      await file.rename(path);
-
-      _entries.add(DownloadEntry(
-        episodeId: episodeId,
-        titleId: titleId,
-        titleName: titleName,
-        episodeLabel: episodeLabel,
-        filePath: path,
-        sizeBytes: await File(path).length(),
-        downloadedAt: DateTime.now(),
-        validUntil: DateTime.parse(info['validUntil'] as String),
-        posterUrl: posterUrl,
-      ));
-      await _persist();
-    } finally {
-      _inFlight.remove(episodeId);
-      notifyListeners();
+      const step = Duration(seconds: 5);
+      await Future.delayed(step);
+      waited += step;
     }
+
+    // Phase 2: the bytes.
+    final dir = await _dir();
+    final path = '${dir.path}/$episodeId.mp4';
+    final tmpPath = '$path.part';
+    await _api.dio.download(
+      info['url'] as String,
+      tmpPath,
+      onReceiveProgress: (received, total) {
+        _inFlight[episodeId] = DownloadProgress(received, total);
+        notifyListeners();
+      },
+    );
+    await File(tmpPath).rename(path);
+
+    _entries.add(DownloadEntry(
+      episodeId: episodeId,
+      titleId: job.titleId,
+      titleName: job.titleName,
+      episodeLabel: job.episodeLabel,
+      filePath: path,
+      sizeBytes: await File(path).length(),
+      downloadedAt: DateTime.now(),
+      validUntil: DateTime.parse(info['validUntil'] as String),
+      posterUrl: job.posterUrl,
+    ));
+    await _persist();
   }
 
   Future<void> delete(String episodeId) async {

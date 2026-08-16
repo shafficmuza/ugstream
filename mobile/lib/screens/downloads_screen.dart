@@ -18,10 +18,11 @@ class DownloadsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = context.watch<DownloadsStore>();
     final entries = store.entries;
+    final active = store.inFlight;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Downloads')),
-      body: entries.isEmpty
+      body: entries.isEmpty && active.isEmpty
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
@@ -43,9 +44,37 @@ class DownloadsScreen extends StatelessWidget {
               ),
             )
           : ListView.builder(
-              itemCount: entries.length,
-              itemBuilder: (context, i) {
-                final e = entries[i];
+              itemCount: active.length + entries.length,
+              itemBuilder: (context, index) {
+                // Work in progress sits above finished files: tapping
+                // download and finding this screen empty is what made the
+                // feature feel broken even while it was working.
+                if (index < active.length) {
+                  final a = active[index];
+                  final p = a.progress;
+                  return ListTile(
+                    leading: SizedBox(
+                      width: 72,
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: const Color(0xFFE50914),
+                            value: p.queued || p.preparing || p.total <= 0 ? null : p.fraction,
+                          ),
+                        ),
+                      ),
+                    ),
+                    title: Text(a.titleName),
+                    subtitle: Text(
+                      '${a.episodeLabel} · ${p.label}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFE50914)),
+                    ),
+                  );
+                }
+                final e = entries[index - active.length];
                 final expired = !e.stillValid;
                 return ListTile(
                   leading: SizedBox(
