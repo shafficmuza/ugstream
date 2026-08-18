@@ -9,6 +9,7 @@ import { R2Service } from '../media-storage/r2.service';
 import { TranscodeService } from './transcode.service';
 import { ThumbnailPickerService } from './thumbnail-picker.service';
 import { StreamLeaseService } from '../playback/stream-lease.service';
+import { audienceWhere } from '../titles/audience';
 
 @Injectable()
 export class EpisodesService {
@@ -456,8 +457,23 @@ export class EpisodesService {
   }
 
   async continueWatching(userId: bigint) {
+    // Watch history outlives the catalogue: a title that is unpublished, or
+    // moved between the live and test audiences, leaves rows behind pointing
+    // at it. Without this filter those rows keep rendering as tiles that
+    // play() then refuses — a dead tile on the home screen, which is exactly
+    // what an App Review pass reads as a broken app. The rail is a catalogue
+    // view like any other, so it takes the same audience clause.
+    const viewer = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isTester: true, canPreviewAll: true },
+    });
+
     const rows = await this.prisma.watchHistory.findMany({
-      where: { userId, completed: false },
+      where: {
+        userId,
+        completed: false,
+        episode: { title: audienceWhere(viewer) },
+      },
       orderBy: { updatedAt: 'desc' },
       take: 20,
       include: { episode: { include: { title: true } } },
