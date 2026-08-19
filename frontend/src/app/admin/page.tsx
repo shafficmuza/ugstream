@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { LiveMetrics } from '@/components/live-metrics';
 
 interface Stats {
   userCount: number;
@@ -43,6 +44,8 @@ export default function AdminDashboardPage() {
           </div>
         ))}
       </div>
+
+      <LiveMetrics />
     </div>
   );
 }

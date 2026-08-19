@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { tableStyle, thStyle, tdStyle } from '../shared';
+import { DiskUsage } from '@/components/disk-usage';
 
 interface MediaFile {
   name: string;
@@ -69,6 +70,8 @@ export default function AdminMediaPage() {
         file&apos;s link, then paste it into <b>Import from a link</b> on a title&apos;s edit page —
         the server fetches it directly, so there is no browser upload and no timeout.
       </p>
+
+      <DiskUsage />
 
       {error && <p style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</p>}
 
