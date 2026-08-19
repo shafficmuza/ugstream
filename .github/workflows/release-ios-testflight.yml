@@ -78,6 +78,13 @@ jobs:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           # Certs live on this repo's ios-certs branch; GITHUB_TOKEN can push it.
           MATCH_GIT_URL: https://github.com/${{ github.repository }}.git
+          # gym shells out to `xcodebuild -showBuildSettings` and gives up after
+          # 4 tries at a 3-second base timeout. On a cold runner this project
+          # does not answer that fast — a Flutter app pulls in ~30 CocoaPods
+          # targets, and run #51 died here having already compiled cleanly.
+          # The defaults are tuned for a small native app; these are not.
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "180"
+          FASTLANE_XCODEBUILD_SETTINGS_RETRIES: "10"
         run: |
           export MATCH_GIT_BASIC_AUTHORIZATION=$(printf 'x-access-token:%s' '${{ secrets.GITHUB_TOKEN }}' | base64)
           fastlane ios beta
