@@ -6,6 +6,8 @@ export interface AppSettings {
   tagline: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
+  supportWhatsapp: string | null;
+  supportHours: string | null;
   heroBackgroundUrl: string | null;
   authBackgroundUrl: string | null;
   mobileMoneyProvider?: string;
@@ -23,6 +25,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   tagline: null,
   supportEmail: null,
   supportPhone: null,
+  supportWhatsapp: null,
+  supportHours: null,
   heroBackgroundUrl: null,
   authBackgroundUrl: null,
   mobileMoneyProvider: 'momo',

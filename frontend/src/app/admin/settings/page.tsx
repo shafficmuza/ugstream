@@ -9,7 +9,15 @@ import { DevBypassPanel } from './dev-bypass-panel';
 
 type FormState = Pick<
   AppSettings,
-  'appName' | 'tagline' | 'supportEmail' | 'supportPhone' | 'logoUrl' | 'heroBackgroundUrl' | 'authBackgroundUrl'
+  | 'appName'
+  | 'tagline'
+  | 'supportEmail'
+  | 'supportPhone'
+  | 'supportWhatsapp'
+  | 'supportHours'
+  | 'logoUrl'
+  | 'heroBackgroundUrl'
+  | 'authBackgroundUrl'
 > & {
   mobileMoneyProvider: string;
   smsProvider: string;
@@ -89,12 +97,20 @@ const MOBILE_MONEY_OPTIONS: { value: string; label: string }[] = [
   { value: 'dpo', label: 'DPO Pay' },
 ];
 
+/** Empty means "remove this" — see the PATCH body below for why null, not undefined. */
+function clearable(v: string | null): string | null {
+  const t = (v ?? '').trim();
+  return t === '' ? null : t;
+}
+
 export default function AdminSettingsPage() {
   const [form, setForm] = useState<FormState>({
     appName: '',
     tagline: '',
     supportEmail: '',
     supportPhone: '',
+    supportWhatsapp: '',
+    supportHours: '',
     logoUrl: null,
     heroBackgroundUrl: null,
     authBackgroundUrl: null,
@@ -202,6 +218,8 @@ export default function AdminSettingsPage() {
         tagline: settings.tagline ?? '',
         supportEmail: settings.supportEmail ?? '',
         supportPhone: settings.supportPhone ?? '',
+        supportWhatsapp: settings.supportWhatsapp ?? '',
+        supportHours: settings.supportHours ?? '',
         logoUrl: settings.logoUrl,
         heroBackgroundUrl: settings.heroBackgroundUrl,
         authBackgroundUrl: settings.authBackgroundUrl,
@@ -310,8 +328,14 @@ export default function AdminSettingsPage() {
         body: {
           appName: form.appName,
           tagline: form.tagline || undefined,
-          supportEmail: form.supportEmail || undefined,
-          supportPhone: form.supportPhone || undefined,
+          // Support fields send null, not undefined, when emptied. Prisma skips
+          // an undefined, so `|| undefined` would make clearing a field a silent
+          // no-op — and a WhatsApp number that has gone stale is exactly the one
+          // an admin needs to be able to take back down.
+          supportEmail: clearable(form.supportEmail),
+          supportPhone: clearable(form.supportPhone),
+          supportWhatsapp: clearable(form.supportWhatsapp),
+          supportHours: clearable(form.supportHours),
         },
       });
       setMessage('Saved.');
@@ -321,6 +345,12 @@ export default function AdminSettingsPage() {
       setSaving(false);
     }
   }
+
+  // Guidance only — a number without a country code still saves, because the
+  // admin may legitimately be mid-edit. wa.me simply cannot open a chat from
+  // a local-format number, so we say so rather than silently accepting it.
+  const whatsappMissingPlus =
+    (form.supportWhatsapp ?? '').trim() !== '' && !(form.supportWhatsapp ?? '').trim().startsWith('+');
 
   if (!loaded) return <p>Loading…</p>;
 
@@ -357,6 +387,14 @@ export default function AdminSettingsPage() {
           onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
         />
 
+        <h2 style={{ fontSize: 16, marginTop: 32, marginBottom: 4 }}>Support &amp; contact</h2>
+        <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 16 }}>
+          Exactly what you enter here is what users see on the app&apos;s <b>Help &amp; support</b>{' '}
+          screen — leave a field blank and it is simply not shown. The WhatsApp number opens a chat
+          the moment it is tapped, so it must be a full international number including the country
+          code.
+        </p>
+
         <label style={labelStyle}>Support email</label>
         <input
           style={inputStyle}
@@ -370,6 +408,28 @@ export default function AdminSettingsPage() {
           style={inputStyle}
           value={form.supportPhone ?? ''}
           onChange={(e) => setForm((f) => ({ ...f, supportPhone: e.target.value }))}
+        />
+
+        <label style={labelStyle}>WhatsApp number</label>
+        <input
+          style={{ ...inputStyle, marginBottom: whatsappMissingPlus ? 4 : 16 }}
+          placeholder="+256700000000"
+          value={form.supportWhatsapp ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, supportWhatsapp: e.target.value }))}
+        />
+        {whatsappMissingPlus && (
+          <p style={{ color: '#ffb020', fontSize: 12, marginTop: 0, marginBottom: 16 }}>
+            Start with <b>+</b> and the country code, e.g. <b>+256700000000</b> — a local-format
+            number will not open a chat.
+          </p>
+        )}
+
+        <label style={labelStyle}>Support hours</label>
+        <input
+          style={inputStyle}
+          placeholder="Mon–Sat, 9am–8pm EAT"
+          value={form.supportHours ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, supportHours: e.target.value }))}
         />
 
         <button className="btn" style={{ width: '100%', marginTop: 8, marginBottom: 32 }} type="submit" disabled={saving}>
