@@ -31,6 +31,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   late final CatalogService _catalog;
   final _ctrl = TextEditingController();
+  final _focus = FocusNode();
   final _scroll = ScrollController();
   Timer? _debounce;
 
@@ -56,6 +57,7 @@ class _SearchScreenState extends State<SearchScreen> {
     _debounce?.cancel();
     _scroll.dispose();
     _ctrl.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -117,12 +119,19 @@ class _SearchScreenState extends State<SearchScreen> {
               elevation: 0,
               backgroundColor: Colors.transparent,
             ),
-      body: Column(
-        children: [
-          if (!browsingRail) _searchField(),
-          if (_results.isNotEmpty) _countLine(),
-          Expanded(child: _grid()),
-        ],
+      // The empty state and the count line are not scrollable, so a tap has to
+      // work as well as a drag — otherwise a search that returns nothing is a
+      // dead end with the keyboard still up.
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => _focus.unfocus(),
+        child: Column(
+          children: [
+            if (!browsingRail) _searchField(),
+            if (_results.isNotEmpty) _countLine(),
+            Expanded(child: _grid()),
+          ],
+        ),
       ),
     );
   }
@@ -144,9 +153,14 @@ class _SearchScreenState extends State<SearchScreen> {
             _onChanged(q);
           },
           textInputAction: TextInputAction.search,
+          focusNode: _focus,
           onSubmitted: (q) {
             _query = q.trim();
             _load(reset: true);
+            // Submitting is the end of typing. Without this the keyboard stays
+            // up over the bottom navigation bar, and since this screen sits in
+            // the shell's IndexedStack there is then no way back to Home.
+            _focus.unfocus();
           },
           style: const TextStyle(fontSize: 15.5),
           cursorColor: const Color(0xFFE50914),
@@ -223,6 +237,9 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     return GridView.builder(
       controller: _scroll,
+      // Drag-to-dismiss: the platform-standard gesture, and the one a viewer
+      // reaches for first when the keyboard is covering what they came to see.
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
