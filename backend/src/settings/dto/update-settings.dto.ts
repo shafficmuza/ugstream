@@ -1,4 +1,23 @@
-import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+
+// The support-contact fields are the only ones a client may clear. Omitting a
+// field still means "leave it alone", so `null` is how the admin UI says "this
+// channel is gone" — an empty string would be published as a blank contact row
+// rather than hiding it. ValidateIf lets that null past the format checks
+// without weakening them for a real value: an email that is present still has
+// to look like an email.
+const notNull = () => ValidateIf((_object: unknown, value: unknown) => value !== null);
 
 export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
@@ -16,11 +35,21 @@ export class UpdateSettingsDto {
   @IsOptional() @IsString() @MaxLength(160)
   tagline?: string;
 
-  @IsOptional() @IsEmail()
-  supportEmail?: string;
+  @IsOptional() @notNull() @IsEmail()
+  supportEmail?: string | null;
 
-  @IsOptional() @IsString() @MaxLength(20)
-  supportPhone?: string;
+  @IsOptional() @notNull() @IsString() @MaxLength(20)
+  supportPhone?: string | null;
+
+  // E.164, since the app builds a wa.me link out of it. 20 matches
+  // supportPhone: 15 digits plus '+' is the longest legitimate number.
+  @IsOptional() @notNull() @IsString() @MaxLength(20)
+  supportWhatsapp?: string | null;
+
+  // Free text ("Mon–Sat, 9am–8pm EAT"). Capped at a line's worth so it stays
+  // a caption under the contact options rather than a paragraph.
+  @IsOptional() @notNull() @IsString() @MaxLength(80)
+  supportHours?: string | null;
 
   @IsOptional() @IsString()
   heroBackgroundUrl?: string;

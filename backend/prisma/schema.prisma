@@ -21,6 +21,18 @@ model AppSettings {
   tagline           String?
   supportEmail      String?  @map("support_email")
   supportPhone      String?  @map("support_phone")
+  // The app's "Contact us" section. WhatsApp is a separate field from
+  // supportPhone because the number people call is not always the number that
+  // answers on WhatsApp, and the app turns this one into a tappable wa.me
+  // link — so it is stored in E.164 ("+256775200443"), not as a pretty
+  // printed local number.
+  //
+  // supportHours is free text ("Mon–Sat, 9am–8pm EAT") shown beneath the
+  // contact options: without it a message sent at midnight reads as ignored,
+  // and the right wording changes with staffing, so it is admin-editable
+  // rather than a string in the mobile build.
+  supportWhatsapp   String?  @map("support_whatsapp")
+  supportHours      String?  @map("support_hours")
   // Swappable background art — admin-uploaded, no redeploy needed to
   // change the "feel" of the site. Separate fields since the login page
   // is a small centered form (wants a moodier, less busy image) while the
