@@ -4,12 +4,12 @@ class AppConfig {
   /// Override at build time: --dart-define=API_BASE=https://…/api/v1
   static const String apiBase = String.fromEnvironment(
     'API_BASE',
-    defaultValue: 'https://ham.sentepos.com/api/v1',
+    defaultValue: 'https://muzawatch.com/api/v1',
   );
 
   static const String appName = 'Muza Watch';
 
-  /// Scheme + host of the API, e.g. https://ham.sentepos.com
+  /// Scheme + host of the API, e.g. https://muzawatch.com
   static String get origin {
     final u = Uri.parse(apiBase);
     return '${u.scheme}://${u.authority}';

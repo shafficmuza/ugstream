@@ -66,7 +66,7 @@ jobs:
           # the CI run number (monotonic) as CFBundleVersion.
           flutter build ios --release --no-codesign \
             --build-number=${{ github.run_number }} \
-            --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+            --dart-define=API_BASE=https://muzawatch.com/api/v1
 
       - name: Fastlane beta (sign + upload to TestFlight)
         working-directory: mobile

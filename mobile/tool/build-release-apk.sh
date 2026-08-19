@@ -25,6 +25,46 @@ export PATH="$PATH:/opt/flutter/bin:/opt/android-sdk/cmdline-tools/latest/bin:/o
 APP=/root/ugstream/mobile
 OUT=/root/ugstream/backend/uploads/ham-watch.apk
 
+# Which backend this binary will talk to for the rest of its life. A release
+# APK cannot be repointed after it ships, so this is the single most expensive
+# line in the file to get wrong.
+#
+# muzawatch.com is production. ham.sentepos.com is the old name, still serving
+# the same upstreams only until no installed app hard-codes it — see
+# scripts/enable-muzawatch-ssl.sh. New builds must not add to that debt.
+API_BASE="${API_BASE:-https://muzawatch.com/api/v1}"
+PROD_HOST=muzawatch.com
+
+# Guard 1: building the *published* APK against anything but production has to
+# be deliberate. A dev build is fine; a dev build that silently lands on the
+# download link the whole country installs from is not.
+HOST=$(printf '%s' "$API_BASE" | awk -F/ '{print $3}')
+if [ "$HOST" != "$PROD_HOST" ] && [ "${ALLOW_NONPROD:-0}" != "1" ]; then
+    echo "refusing: API_BASE points at '$HOST', not $PROD_HOST." >&2
+    echo "for a deliberate non-production build: ALLOW_NONPROD=1 $0" >&2
+    exit 1
+fi
+
+# Guard 2: the endpoint has to actually be alive and answering like our API
+# before we spend 18 minutes compiling against it. Catches a dead host, a
+# stale DNS record, and a proxy that 200s with someone else's page.
+echo "preflight: $API_BASE/settings"
+PRE=$(curl -fsS -m 20 "$API_BASE/settings" 2>/dev/null || true)
+if ! printf '%s' "$PRE" | grep -q '"appName"'; then
+    echo "refusing: $API_BASE/settings did not answer like the Muza Watch API." >&2
+    exit 1
+fi
+
+# Guard 3: refuse to ship against a backend still leaking the dev sign-in
+# bypass on its public settings endpoint. That was live until 2026-08-19; an
+# APK built against a host that still leaks it is being pointed at an
+# unpatched server, which is worth failing the build over.
+if printf '%s' "$PRE" | grep -q 'devBypass'; then
+    echo "refusing: $HOST still publishes devBypass* on /settings — it is unpatched." >&2
+    exit 1
+fi
+echo "preflight OK — $HOST is live and patched"
+
 cd "$APP"
 flutter pub get
 
@@ -34,7 +74,7 @@ flutter pub get
 dart run flutter_launcher_icons
 
 flutter test
-flutter build apk --release --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+flutter build apk --release --dart-define=API_BASE="$API_BASE"
 
 BUILT="$APP/build/app/outputs/flutter-apk/app-release.apk"
 [ -f "$BUILT" ] || { echo "build produced no APK" >&2; exit 1; }
@@ -57,4 +97,5 @@ fi
 [ -f "$OUT" ] && cp -f "$OUT" "$OUT.prev"
 cp -f "$BUILT" "$OUT"
 chmod 644 "$OUT"
-echo "published $(du -h "$OUT" | cut -f1) -> https://ham.sentepos.com/api/uploads/ham-watch.apk"
+echo "published $(du -h "$OUT" | cut -f1) -> https://$PROD_HOST/api/uploads/ham-watch.apk"
+echo "this APK talks to: $API_BASE"

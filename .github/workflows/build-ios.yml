@@ -40,7 +40,7 @@ jobs:
         working-directory: mobile
         run: >
           flutter build ios --release --no-codesign
-          --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+          --dart-define=API_BASE=https://muzawatch.com/api/v1
 
       - name: Upload build proof
         uses: actions/upload-artifact@v4

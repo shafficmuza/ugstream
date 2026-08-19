@@ -93,7 +93,7 @@ jobs:
         working-directory: mobile
         run: >
           flutter build apk --release
-          --dart-define=API_BASE=https://ham.sentepos.com/api/v1
+          --dart-define=API_BASE=https://muzawatch.com/api/v1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

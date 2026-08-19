@@ -85,7 +85,7 @@ jobs:
         run: >
           flutter build appbundle --release
           --build-number=$(( 100 + ${{ github.run_number }} ))
-          --dart-define=API_BASE=https://ham.sentepos.com/api/v1 \
+          --dart-define=API_BASE=https://muzawatch.com/api/v1 \
           --dart-define=STORE=play
 
       # Fails the job if the bundle came out debug-signed, which would happen
