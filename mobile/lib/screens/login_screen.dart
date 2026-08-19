@@ -1,6 +1,7 @@
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +13,50 @@ import '../core/branding.dart';
 /// keeps an OTP a once-per-account cost rather than once per sign-in.
 /// Which field the sign-in screen is showing.
 enum _Step { phone, code, pin }
+
+/// Turn what the field produced into E.164, forgiving the two ways a
+/// subscriber's typing collides with the country picker.
+///
+/// The picker already contributes the dialling code, so the number box holds
+/// the national part only. People do not type that way:
+///
+///  - a leading 0 out of habit — "+256" + "0772…" = "+2560772…";
+///  - the whole international number, "+256772…", exactly as it is printed on
+///    every poster and saved in every contact list, which arrives here as
+///    "+256+256772…". That used to be sent verbatim: long enough to pass the
+///    length check, malformed enough to fail the server's parser, and the
+///    sign-in screen could only report the 400 as a failure to connect.
+///
+/// The duplicate is detected from a '+' typed *inside* the number, never from
+/// repeated digits. "+256 256775442" is a real Ugandan number whose national
+/// part begins "256", and stripping that as a doubled code would break a
+/// working sign-in to fix a broken one.
+///
+/// Top-level rather than a method so this can be tested without pumping a
+/// widget — these are exactly the cases nobody thinks to try by hand.
+String normaliseE164(String full, {String? dialCode}) {
+  final s = full.replaceAll(RegExp(r'[^\d+]'), '');
+  final cc = (dialCode ?? '').replaceAll(RegExp(r'[^\d]'), '');
+
+  // A '+' anywhere but the front means the number was typed in full on top of
+  // the code the picker supplies. What was typed wins; the prefix is the
+  // duplicate.
+  final inner = s.indexOf('+', 1);
+  var digits = inner == -1
+      ? s.replaceAll('+', '')
+      : s.substring(inner + 1).replaceAll('+', '');
+
+  if (cc.isNotEmpty && digits.startsWith(cc)) {
+    // Drop the national trunk prefix; E.164 has no place for it.
+    final rest = digits.substring(cc.length).replaceFirst(RegExp(r'^0+'), '');
+    digits = '$cc$rest';
+  } else if (cc.isEmpty) {
+    final m = RegExp(r'^(\d{1,3})0(\d+)$').firstMatch(digits);
+    if (m != null) digits = '${m.group(1)}${m.group(2)}';
+  }
+
+  return digits.isEmpty ? '' : '+$digits';
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,6 +70,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pin = TextEditingController();
   /// E.164, assembled from the selected country and what was typed.
   String? _fullPhone;
+  /// The picker's current dialling code, e.g. "+256" — needed to tell a
+  /// duplicated country code from digits that merely look like one.
+  String? _dialCode;
   _Step _step = _Step.phone;
   bool _busy = false;
   String? _error;
@@ -51,9 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? get _e164 {
     final full = _fullPhone;
     if (full == null) return null;
-    final normalised = full.replaceAll(RegExp(r'[^\d+]'), '');
-    final m = RegExp(r'^\+(\d{1,3})0(\d+)$').firstMatch(normalised);
-    return m != null ? '+${m.group(1)}${m.group(2)}' : normalised;
+    return normaliseE164(full, dialCode: _dialCode);
   }
 
   /// From the phone step: ask which way this number signs in, then either show
@@ -176,8 +222,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: 'Phone number',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (phone) => _fullPhone = phone.completeNumber,
-                  onCountryChanged: (_) => _fullPhone = null,
+                  onChanged: (phone) {
+                    _fullPhone = phone.completeNumber;
+                    _dialCode = phone.countryCode;
+                  },
+                  onCountryChanged: (c) {
+                    _fullPhone = null;
+                    _dialCode = c.dialCode.startsWith('+') ? c.dialCode : '+${c.dialCode}';
+                  },
                 ),
                 if (_step == _Step.code) ...[
                   const SizedBox(height: 14),
