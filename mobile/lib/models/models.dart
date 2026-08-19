@@ -25,17 +25,22 @@ class User {
   /// reports that one exists.
   final bool pinSet;
 
-  /// Which catalogue this account is served. Shown in Profile when either is
-  /// set, because an account quietly on the wrong one looks exactly like a
-  /// broken app: the catalogue is simply the wrong size, with nothing on
-  /// screen to explain why.
+  /// A test account: served the test catalogue instead of the live one. Kept
+  /// because the server still sends it and other code branches on it, but it
+  /// is deliberately NOT announced in Profile — see [audienceLabel].
   final bool isTester;
+
+  /// This account is served titles that are not published yet. Worth saying
+  /// out loud, because a catalogue containing unreleased titles otherwise
+  /// looks like a bug rather than a privilege.
   final bool canPreviewAll;
 
-  /// Null for an ordinary account — nothing worth saying.
+  /// The one catalogue difference worth putting on screen, or null when there
+  /// is nothing worth saying — which covers every ordinary account, and test
+  /// accounts too: a tester already knows they are one, and the banner only
+  /// ever read as clutter on a screen the tester uses like any other viewer.
   String? get audienceLabel {
     if (canPreviewAll) return 'Early access — you see titles before they are published';
-    if (isTester) return 'Test account — you see the test catalogue only';
     return null;
   }
 
