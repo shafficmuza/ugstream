@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { readAudienceCookie } from '../../auth/auth.controller';
+import { readAudienceCookie, readRefreshCookie } from '../../auth/auth.controller';
 
 /**
  * Identifies the caller when it can, and lets the request through when it
@@ -39,7 +39,7 @@ export class OptionalJwtGuard implements CanActivate {
     const req = context.switchToHttp().getRequest();
     const header: string | undefined = req.headers?.authorization;
     if (!header?.startsWith('Bearer ')) {
-      req.audience = readAudienceCookie(req.headers?.cookie);
+      req.audience = await this.audienceFromCookies(req.headers?.cookie);
       return true;
     }
 
@@ -69,7 +69,51 @@ export class OptionalJwtGuard implements CanActivate {
 
     // The account's own flags win whenever we have them; the cookie only
     // answers for a request that arrived without a usable token.
-    req.audience = req.auth ?? readAudienceCookie(req.headers?.cookie);
+    req.audience = req.auth ?? (await this.audienceFromCookies(req.headers?.cookie));
     return true;
+  }
+
+  /**
+   * Who is browsing, for a request that arrived without an access token.
+   *
+   * Every server-rendered catalogue page is one of those: Next builds the HTML
+   * on the server, where the browser's token does not exist. The httpOnly
+   * cookie jar is all there is, so that is what we identify from.
+   *
+   * The `ugs_aud` hint alone cannot answer this. It has two values, test and
+   * live, so it can say "this account is on the test catalogue" and nothing
+   * else — an Early access account came through it indistinguishable from an
+   * ordinary viewer and was served the test catalogue on the website while the
+   * phone app, which sends its token, correctly showed them everything.
+   *
+   * The refresh cookie can. It is `lookup.verifier`, and only the lookup half
+   * is read here: one indexed row, no bcrypt, because a page render cannot
+   * afford a password-hash comparison. That makes this deliberately weaker
+   * than authentication, and it is used for nothing else — it chooses which
+   * catalogue to DISPLAY. Playback, entitlement and every guarded endpoint
+   * still demand the access token and re-check the account, so the most a
+   * leaked lookup buys is a list that its own account could already see.
+   *
+   * Falls back to the `ugs_aud` hint for a browser holding a catalogue
+   * preference but no session, and for tokens predating the lookup format.
+   */
+  private async audienceFromCookies(cookieHeader?: string) {
+    const refresh = readRefreshCookie(cookieHeader);
+    const lookup = refresh?.includes('.') ? refresh.split('.')[0] : null;
+    if (lookup) {
+      const session = await this.prisma.session.findUnique({
+        where: { refreshLookup: lookup },
+        select: {
+          revokedAt: true,
+          user: { select: { status: true, isTester: true, canPreviewAll: true } },
+        },
+      });
+      const user = session?.revokedAt === null ? session.user : null;
+      // A banned account gets the public catalogue, as it does everywhere else.
+      if (user && user.status !== 'banned') {
+        return { isTester: user.isTester, canPreviewAll: user.canPreviewAll };
+      }
+    }
+    return readAudienceCookie(cookieHeader);
   }
 }

@@ -19,12 +19,21 @@ describe('OptionalJwtGuard audience resolution', () => {
     };
   };
 
-  const makeGuard = (user?: any) =>
+  const makeGuard = (user?: any, session: any = null) =>
     new OptionalJwtGuard(
       { verifyAsync: jest.fn().mockResolvedValue({ sub: '7', sid: 'sess-1' }) } as any,
       { get: jest.fn() } as any,
-      { user: { findUnique: jest.fn().mockResolvedValue(user) } } as any,
+      {
+        user: { findUnique: jest.fn().mockResolvedValue(user) },
+        session: { findUnique: jest.fn().mockResolvedValue(session) },
+      } as any,
     );
+
+  const sessionFor = (flags: { isTester?: boolean; canPreviewAll?: boolean }, extra: any = {}) => ({
+    revokedAt: null,
+    user: { status: 'active', isTester: false, canPreviewAll: false, ...flags },
+    ...extra,
+  });
 
   it('serves the test catalogue to an anonymous request carrying the tester cookie', async () => {
     const { req, ctx: c } = ctx({ cookie: 'ugs_aud=test' });
@@ -42,6 +51,8 @@ describe('OptionalJwtGuard audience resolution', () => {
   });
 
   it('ignores an unrelated cookie jar', async () => {
+    // 'abc' has no lookup half, so there is no session to find and nothing
+    // else in the jar says anything about a catalogue.
     const { req, ctx: c } = ctx({ cookie: 'ugs_rt=abc; other=1' });
     await makeGuard().canActivate(c);
     expect(req.audience).toBeNull();
@@ -75,5 +86,66 @@ describe('OptionalJwtGuard audience resolution', () => {
     const { req, ctx: c } = ctx({ authorization: 'Bearer stale', cookie: 'ugs_aud=test' });
     await makeGuard(null).canActivate(c);
     expect(req.audience).toEqual({ isTester: true });
+  });
+
+  /**
+   * The gap the audience cookie could never close on its own: it says test or
+   * live, and Early access is neither. On the website — where there is no
+   * token to ask — that served the whole held-back catalogue's owner the three
+   * test titles, while the same account on the phone saw all 208.
+   */
+  describe('an Early access account browsing the website', () => {
+    it('is recognised from the session cookie, not the two-valued hint', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_rt=look1.verify1; ugs_aud=live' });
+
+      await makeGuard(undefined, sessionFor({ canPreviewAll: true })).canActivate(c);
+
+      expect(req.audience).toEqual({ isTester: false, canPreviewAll: true });
+      expect(req.auth).toBeUndefined(); // display-only: still never an identity
+    });
+
+    it('beats a stale tester hint left in the jar', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_aud=test; ugs_rt=look1.verify1' });
+      await makeGuard(undefined, sessionFor({ canPreviewAll: true })).canActivate(c);
+      expect(req.audience).toEqual({ isTester: false, canPreviewAll: true });
+    });
+
+    it('reads a tester the same way', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_rt=look1.verify1' });
+      await makeGuard(undefined, sessionFor({ isTester: true })).canActivate(c);
+      expect(req.audience).toEqual({ isTester: true, canPreviewAll: false });
+    });
+
+    it('a signed-out session grants nothing', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_rt=look1.verify1' });
+      const revoked = sessionFor({ canPreviewAll: true }, { revokedAt: new Date() });
+      await makeGuard(undefined, revoked).canActivate(c);
+      expect(req.audience).toBeNull();
+    });
+
+    it('a banned account gets the public catalogue like anyone else', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_rt=look1.verify1' });
+      await makeGuard(undefined, sessionFor({ canPreviewAll: true, status: 'banned' } as any)).canActivate(c);
+      expect(req.audience).toBeNull();
+    });
+
+    it('falls back to the hint when the session cookie matches nothing', async () => {
+      const { req, ctx: c } = ctx({ cookie: 'ugs_rt=look1.verify1; ugs_aud=test' });
+      await makeGuard(undefined, null).canActivate(c);
+      expect(req.audience).toEqual({ isTester: true });
+    });
+
+    it('the access token still wins when there is one', async () => {
+      const { req, ctx: c } = ctx({
+        authorization: 'Bearer good',
+        cookie: 'ugs_rt=look1.verify1',
+      });
+      const user = { id: 7n, role: 'user', status: 'active', isTester: false, canPreviewAll: false };
+
+      await makeGuard(user, sessionFor({ canPreviewAll: true })).canActivate(c);
+
+      expect(req.audience).toBe(req.auth);
+      expect(req.audience.canPreviewAll).toBe(false);
+    });
   });
 });
