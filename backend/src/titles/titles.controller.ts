@@ -5,6 +5,12 @@ import { OptionalJwtGuard } from '../common/guards/optional-jwt.guard';
 /**
  * The public catalogue. Optionally authenticated: anonymous visitors and
  * ordinary accounts get the live catalogue, tester accounts get the test one.
+ *
+ * Reads `req.audience` rather than `req.auth`, because the website's
+ * catalogue pages are server-rendered and arrive with no token at all — the
+ * guard resolves those from the audience cookie instead. Using `req.auth`
+ * here meant every web page asked as an anonymous visitor, so a signed-in
+ * tester was shown the live catalogue.
  */
 @UseGuards(OptionalJwtGuard)
 @Controller()
@@ -13,7 +19,7 @@ export class TitlesController {
 
   @Get('home')
   home(@Req() req: any) {
-    return this.titles.home(req.auth);
+    return this.titles.home(req.audience);
   }
 
   /**
@@ -69,17 +75,17 @@ export class TitlesController {
         page: page ? parseInt(page, 10) : undefined,
         perPage: perPage ? parseInt(perPage, 10) : undefined,
       },
-      req.auth,
+      req.audience,
     );
   }
 
   @Get('titles/:slug')
   detail(@Req() req: any, @Param('slug') slug: string) {
-    return this.titles.findBySlug(slug, req.auth);
+    return this.titles.findBySlug(slug, req.audience);
   }
 
   @Get('titles/:slug/similar')
   similar(@Req() req: any, @Param('slug') slug: string) {
-    return this.titles.similar(slug, req.auth);
+    return this.titles.similar(slug, req.audience);
   }
 }

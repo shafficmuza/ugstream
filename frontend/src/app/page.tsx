@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiFetchAsViewer } from '@/lib/api-server';
 import { fetchSettings } from '@/lib/settings';
 import { Billboard, BillboardData } from '@/components/billboard';
 import { Rail } from '@/components/rail';
@@ -19,7 +19,7 @@ interface HomePayload {
 export default async function HomePage() {
   let data: HomePayload = { billboard: null, rails: [] };
   try {
-    data = await apiFetch<HomePayload>('/home');
+    data = await apiFetchAsViewer<HomePayload>('/home');
   } catch {
     // Backend not reachable (e.g. first local run before seeding) —
     // render an empty shell instead of crashing the page.

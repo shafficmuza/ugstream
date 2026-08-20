@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetchAsViewer } from '@/lib/api-server';
 import { BackButton } from '@/components/back-button';
 import { MyListButton } from '@/components/my-list-button';
 import { PosterGrid } from '@/components/poster-grid';
@@ -63,8 +63,8 @@ export default async function TitlePage({
   searchParams: { play?: string };
 }) {
   const [title, similar] = await Promise.all([
-    apiFetch<TitleDetail>(`/titles/${params.slug}`),
-    apiFetch<TitleCardData[]>(`/titles/${params.slug}/similar`).catch(() => [] as TitleCardData[]),
+    apiFetchAsViewer<TitleDetail>(`/titles/${params.slug}`),
+    apiFetchAsViewer<TitleCardData[]>(`/titles/${params.slug}/similar`).catch(() => [] as TitleCardData[]),
   ]);
 
   const art = title.bannerUrl ?? title.posterUrl;
