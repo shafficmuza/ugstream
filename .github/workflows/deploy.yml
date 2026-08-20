@@ -1,0 +1,141 @@
+name: Deploy to production
+
+# Deploys the server the same way a person would, from a runner that can
+# actually reach it. Every merge to main ships; the manual trigger exists so a
+# deploy can be re-run without an empty commit.
+#
+# Requires repository secrets (Settings -> Secrets and variables -> Actions).
+# Nothing about the target is written in this file: the repository is public.
+#
+#   DEPLOY_HOST      the server's hostname
+#   DEPLOY_USER      the ssh user
+#   DEPLOY_SSH_KEY   a private key authorised on that user   (preferred)
+#   DEPLOY_PASSWORD  that user's password                    (fallback)
+#
+# Set the key if you can: a password for a root account, held in CI, is worth
+# retiring. Either one alone is enough.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one midway: a build interrupted
+# between `npm run build` and `pm2 restart` leaves the box serving half a
+# release.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the secrets are present
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          missing=0
+          [ -n "$HOST" ] || { echo "::error::DEPLOY_HOST is not set"; missing=1; }
+          [ -n "$DEPLOY_USER" ] || { echo "::error::DEPLOY_USER is not set"; missing=1; }
+          if [ -z "$KEY" ] && [ -z "$PASSWORD" ]; then
+            echo "::error::Set DEPLOY_SSH_KEY (preferred) or DEPLOY_PASSWORD"
+            missing=1
+          fi
+          exit $missing
+
+      - name: Set up ssh
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # Pin the host key on first contact rather than disabling the check
+          # outright, so the rest of the run is not talking to just anyone.
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          if [ -n "$KEY" ]; then
+            printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+            chmod 600 ~/.ssh/id_deploy
+            echo "SSH_CMD=ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+            echo "SSH_CMD=sshpass -e ssh" >> "$GITHUB_ENV"
+          fi
+
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SSHPASS: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          # A login shell so nvm's PATH is present: pm2, node and npm are not
+          # on a non-interactive PATH, which is the classic way a scripted
+          # deploy "succeeds" while restarting nothing.
+          $SSH_CMD "$DEPLOY_USER@$HOST" 'bash -ls' <<'REMOTE'
+          set -euo pipefail
+          cd /root/ugstream
+
+          echo "----- repository -----"
+          git fetch origin main
+          # Stash rather than discard: a previous session may have left edits
+          # on the box, and a deploy is no place to destroy someone's work.
+          # A dirty tree is also what makes `git pull` refuse, which is how a
+          # deploy silently becomes a no-op.
+          if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "Working tree was dirty - stashing before deploy:"
+            git status --short
+            git stash push -u -m "pre-deploy $(date -u +%FT%TZ)" || true
+          fi
+          git checkout -B main origin/main
+          git reset --hard origin/main
+          echo "Now at: $(git log --oneline -1)"
+
+          echo "----- backend -----"
+          cd /root/ugstream/backend
+          npm ci
+          npx prisma generate
+          npx prisma migrate deploy
+          npm run build
+
+          echo "----- frontend -----"
+          cd /root/ugstream/frontend
+          npm ci
+          npm run build
+
+          echo "----- restart -----"
+          pm2 restart ugstream-backend ugstream-frontend --update-env
+          pm2 list
+          REMOTE
+
+      - name: Verify what is actually serving
+        run: |
+          # The failure this catches: a deploy that reports success while the
+          # old build is still running. catalogueMode is served by the current
+          # backend and by nothing before it, so its absence means old JS.
+          sleep 5
+          fail=0
+          for domain in muzawatch.com ham.sentepos.com; do
+            body=$(curl -fsS --max-time 30 "https://$domain/api/v1/settings" || echo '{}')
+            mode=$(printf '%s' "$body" | python3 -c "import sys,json;print(json.load(sys.stdin).get('catalogueMode') or '')" 2>/dev/null || echo '')
+            if [ -z "$mode" ]; then
+              echo "::error::$domain is not serving the current build (no catalogueMode in /settings)"
+              fail=1
+            else
+              echo "$domain -> catalogueMode=$mode"
+            fi
+            home=$(curl -fsS --max-time 30 "https://$domain/api/v1/home" || echo '{}')
+            printf '%s' "$home" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+b = d.get('billboard')
+names = sorted({t['name'] for r in d.get('rails', []) for t in r.get('titles', [])})
+print('  anonymous billboard:', b and b.get('name'))
+print('  anonymous titles:', names)
+" 2>/dev/null || echo '  home unreadable'
+          done
+          exit $fail
