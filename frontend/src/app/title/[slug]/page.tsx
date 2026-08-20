@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { ApiError } from '@/lib/api';
 import { apiFetchAsViewer } from '@/lib/api-server';
 import { BackButton } from '@/components/back-button';
 import { MyListButton } from '@/components/my-list-button';
@@ -62,8 +63,17 @@ export default async function TitlePage({
   params: { slug: string };
   searchParams: { play?: string };
 }) {
+  // A title the API will not serve this viewer is a 404, not a crash. The API
+  // hides a title for two ordinary reasons — it does not exist, or the
+  // catalogue mode keeps it from this viewer — and both used to escape as an
+  // unhandled throw and render a 500. That matters most for a title that was
+  // public until recently: people hold links to it, and a server error tells
+  // them the site is broken rather than that the page is gone.
   const [title, similar] = await Promise.all([
-    apiFetchAsViewer<TitleDetail>(`/titles/${params.slug}`),
+    apiFetchAsViewer<TitleDetail>(`/titles/${params.slug}`).catch((e: ApiError) => {
+      if (e?.statusCode === 404) notFound();
+      throw e; // a real fault still surfaces as one
+    }),
     apiFetchAsViewer<TitleCardData[]>(`/titles/${params.slug}/similar`).catch(() => [] as TitleCardData[]),
   ]);
 
