@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from './push.service';
 import { DevicePlatform } from '@prisma/client';
+import { notifiableAudience } from '../titles/audience';
+import { readCatalogueMode } from '../titles/catalogue-mode';
 
 @Injectable()
 export class NotificationsService {
@@ -72,12 +74,22 @@ export class NotificationsService {
       ? title.description.trim()
       : `${title.name} is now available to watch.`;
 
-    const result = await this.push.sendToAudience(audience, {
-      title: `New on ${settings?.appName ?? 'Muza Watch'}: ${title.name}`,
-      body,
-      path: `/title/${title.slug}`,
-      imageUrl: title.bannerUrl ?? title.posterUrl ?? undefined,
-    });
+    // Only the handsets that could open it. A tester tapping an announcement
+    // for a live title, or an ordinary viewer tapping one for test content,
+    // lands on "Title not found" — the notification promised something the
+    // catalogue then denies.
+    const visibleTo = notifiableAudience(title, await readCatalogueMode(this.prisma));
+
+    const result = await this.push.sendToAudience(
+      audience,
+      {
+        title: `New on ${settings?.appName ?? 'Muza Watch'}: ${title.name}`,
+        body,
+        path: `/title/${title.slug}`,
+        imageUrl: title.bannerUrl ?? title.posterUrl ?? undefined,
+      },
+      visibleTo,
+    );
 
     // Only count it as announced if it actually reached someone. A send to
     // zero devices announced nothing, so burning the title's one-shot flag

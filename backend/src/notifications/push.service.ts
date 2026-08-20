@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretsService } from '../common/secrets.service';
+import { TitleAudience } from '../titles/audience';
 
 /** Key holding the Firebase service-account JSON (entered in the admin UI). */
 export const FIREBASE_SERVICE_ACCOUNT = 'FIREBASE_SERVICE_ACCOUNT';
@@ -116,28 +117,40 @@ export class PushService {
    * viewer is exactly who a new-title announcement is meant to reach. Banned
    * users are excluded from both — they keep the app installed but must not
    * be marketed to.
+   *
+   * `visibleTo` narrows that to the handsets whose account could actually open
+   * the title being announced. Omit it for a free-text broadcast, which is
+   * about the service rather than about any one title and goes to everyone.
    */
-  private async audienceTokens(audience: string): Promise<string[]> {
-    const notBanned = { OR: [{ userId: null }, { user: { status: 'active' as const } }] };
+  private async audienceTokens(audience: string, visibleTo?: TitleAudience): Promise<string[]> {
+    const notBanned: any = { OR: [{ userId: null }, { user: { status: 'active' as const } }] };
 
-    if (audience === 'subscribers') {
-      const rows = await this.prisma.device.findMany({
-        where: {
-          userId: { not: null },
-          user: {
-            status: 'active',
-            subscriptions: { some: { expiresAt: { gt: new Date() } } },
-          },
-        },
-        select: { token: true },
-      });
-      return rows.map((r) => r.token);
+    const where: any =
+      audience === 'subscribers'
+        ? {
+            userId: { not: null },
+            user: {
+              status: 'active',
+              subscriptions: { some: { expiresAt: { gt: new Date() } } },
+            },
+          }
+        : notBanned;
+
+    if (visibleTo) {
+      const canOpenIt: any[] = [];
+      if (visibleTo.ordinary) {
+        // A handset with nobody signed in is an ordinary viewer: it sees
+        // whatever an anonymous visitor sees.
+        canOpenIt.push({ userId: null });
+        canOpenIt.push({ user: { isTester: false, canPreviewAll: false } });
+      }
+      if (visibleTo.testers) canOpenIt.push({ user: { isTester: true } });
+      // Early access sees everything, in either mode.
+      canOpenIt.push({ user: { canPreviewAll: true } });
+      where.AND = [{ OR: canOpenIt }];
     }
 
-    const rows = await this.prisma.device.findMany({
-      where: notBanned,
-      select: { token: true },
-    });
+    const rows = await this.prisma.device.findMany({ where, select: { token: true } });
     return rows.map((r) => r.token);
   }
 
@@ -145,8 +158,12 @@ export class PushService {
    * Deliver to an audience. Never throws: push is a side effect of publishing
    * and must not be able to fail the publish itself.
    */
-  async sendToAudience(audience: string, payload: PushPayload): Promise<PushResult> {
-    const tokens = await this.audienceTokens(audience);
+  async sendToAudience(
+    audience: string,
+    payload: PushPayload,
+    visibleTo?: TitleAudience,
+  ): Promise<PushResult> {
+    const tokens = await this.audienceTokens(audience, visibleTo);
     return this.sendToTokens(tokens, payload);
   }
 

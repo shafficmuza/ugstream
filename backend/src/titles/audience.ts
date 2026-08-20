@@ -68,3 +68,36 @@ export function canPreviewAll(viewer?: Viewer | null): boolean {
 export function isTestViewer(viewer?: Viewer | null): boolean {
   return viewer?.isTester === true;
 }
+
+/**
+ * Which kinds of account may be *told* about a title.
+ *
+ * The same rule as the catalogue, asked about people instead of rows: a push
+ * that announces a title the tap cannot open is worse than no push at all, and
+ * before this existed every announcement went to every handset — a tester was
+ * pushed live titles they could not see, and the whole user base was pushed
+ * test content.
+ *
+ * Deliberately derived by asking `mayViewTitle` about one representative
+ * viewer of each kind rather than restating the rule. There is no fourth
+ * spelling to keep in step; change the rule and this follows.
+ */
+export interface TitleAudience {
+  /** Ordinary accounts, and handsets with nobody signed in. */
+  ordinary: boolean;
+  /** Accounts marked as testers. */
+  testers: boolean;
+  /** Early access sees every title in either mode, so this is always true. */
+  earlyAccess: true;
+}
+
+export function notifiableAudience(
+  title: { isTest: boolean; published: boolean },
+  mode: CatalogueMode,
+): TitleAudience {
+  return {
+    ordinary: mayViewTitle(null, title, mode),
+    testers: mayViewTitle({ isTester: true }, title, mode),
+    earlyAccess: true,
+  };
+}
