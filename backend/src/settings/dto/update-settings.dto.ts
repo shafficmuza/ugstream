@@ -20,6 +20,12 @@ import {
 const notNull = () => ValidateIf((_object: unknown, value: unknown) => value !== null);
 
 export class UpdateSettingsDto {
+  // The launch-day switch. 'test' serves the test catalogue to everyone,
+  // anonymous visitors included; 'live' is the post-launch arrangement where
+  // ordinary viewers see published titles. See titles/audience.ts.
+  @IsOptional() @IsIn(['test', 'live'])
+  catalogueMode?: string;
+
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
   mobileMoneyProvider?: string;
 

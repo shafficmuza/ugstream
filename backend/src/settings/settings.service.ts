@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface UpdateSettingsInput {
+  /** 'test' | 'live' — see titles/audience.ts. The launch-day switch. */
+  catalogueMode?: string;
   appName?: string;
   logoUrl?: string;
   tagline?: string;
@@ -41,6 +43,11 @@ export interface UpdateSettingsInput {
  * silently, at whatever moment the model grows.
  */
 export const PUBLIC_SETTINGS_SELECT = {
+  // Published deliberately, despite the whitelist being conservative by
+  // design: the admin panel reads its current value through this endpoint,
+  // and the mode is already plain to see from the catalogue it produces.
+  // Naming it leaks nothing that browsing the site would not.
+  catalogueMode: true,
   appName: true,
   logoUrl: true,
   tagline: true,

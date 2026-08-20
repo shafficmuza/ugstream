@@ -9,7 +9,8 @@ import { R2Service } from '../media-storage/r2.service';
 import { TranscodeService } from './transcode.service';
 import { ThumbnailPickerService } from './thumbnail-picker.service';
 import { StreamLeaseService } from '../playback/stream-lease.service';
-import { audienceWhere } from '../titles/audience';
+import { audienceWhere, mayViewTitle } from '../titles/audience';
+import { readCatalogueMode } from '../titles/catalogue-mode';
 
 @Injectable()
 export class EpisodesService {
@@ -64,9 +65,9 @@ export class EpisodesService {
       where: { id: userId },
       select: { isTester: true, canPreviewAll: true },
     });
-    if (titleAudience && !viewer?.canPreviewAll) {
-      const allowed = viewer?.isTester ? titleAudience.isTest : titleAudience.published;
-      if (!allowed) {
+    if (titleAudience) {
+      const mode = await readCatalogueMode(this.prisma);
+      if (!mayViewTitle(viewer, titleAudience, mode)) {
         throw new NotFoundException('Video is not ready for playback yet.');
       }
     }
@@ -472,7 +473,7 @@ export class EpisodesService {
       where: {
         userId,
         completed: false,
-        episode: { title: audienceWhere(viewer) },
+        episode: { title: audienceWhere(viewer, await readCatalogueMode(this.prisma)) },
       },
       orderBy: { updatedAt: 'desc' },
       take: 20,

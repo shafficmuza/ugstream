@@ -16,6 +16,12 @@ model AppSettings {
   // a fixed id), not via a DB constraint, since Prisma has no clean way to
   // express "at most one row" beyond that.
   id                Int      @id @default(1)
+  // 'test' | 'live'. In test mode the whole site serves the test catalogue to
+  // everyone — anonymous visitors included — and only an Early access account
+  // sees the published one. Defaults to test because that is the state the
+  // platform is in before launch; flipping it to 'live' on launch day is the
+  // switch, and needs no deploy. See titles/audience.ts.
+  catalogueMode     String   @default("test") @map("catalogue_mode")
   appName           String   @default("ugstream")
   logoUrl           String?
   tagline           String?

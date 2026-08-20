@@ -88,6 +88,16 @@ class FakeEpisodeDb {
     },
   };
 
+  /**
+   * The site's catalogue mode. Defaults to 'live' here so the upload tests
+   * keep asserting about published titles; the audience rules themselves are
+   * covered in titles/audience.spec.ts.
+   */
+  catalogueMode: 'test' | 'live' = 'live';
+  appSettings = {
+    findUnique: async () => ({ catalogueMode: this.catalogueMode }),
+  };
+
   /** Where each user got to. Keyed "userId:episodeId". */
   positions = new Map<string, number>();
   watchHistory = {

@@ -1,6 +1,8 @@
 import { apiFetch } from './api';
 
 export interface AppSettings {
+  /** 'test' | 'live' — which catalogue the whole site serves. */
+  catalogueMode?: string;
   appName: string;
   logoUrl: string | null;
   tagline: string | null;
@@ -20,6 +22,9 @@ export interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  // Matches the server's fail-closed default: if settings cannot be read we
+  // assume test mode rather than implying the live catalogue is showing.
+  catalogueMode: 'test',
   appName: 'ugstream',
   logoUrl: null,
   tagline: null,

@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { Viewer, audienceWhere, isTestViewer, canPreviewAll } from './audience';
+import { Viewer, audienceWhere, audienceSql } from './audience';
+import { readCatalogueMode } from './catalogue-mode';
 
 export interface BrowseQuery {
   kind?: string;
@@ -20,7 +21,7 @@ export class TitlesService {
     const page = Math.max(1, query.page ?? 1);
     const perPage = Math.min(50, Math.max(1, query.perPage ?? 20));
 
-    const where: any = { ...audienceWhere(viewer) };
+    const where: any = { ...audienceWhere(viewer, await readCatalogueMode(this.prisma)) };
     if (query.kind) where.kind = query.kind;
     if (query.language) where.language = query.language;
     if (query.q) {
@@ -55,8 +56,9 @@ export class TitlesService {
   }
 
   async findBySlug(slug: string, viewer?: Viewer | null) {
+    const mode = await readCatalogueMode(this.prisma);
     const title = await this.prisma.title.findFirst({
-      where: { slug, ...audienceWhere(viewer) },
+      where: { slug, ...audienceWhere(viewer, mode) },
       include: {
         episodes: { orderBy: [{ season: 'asc' }, { number: 'asc' }] },
         genres: { include: { genre: true } },
@@ -103,7 +105,8 @@ export class TitlesService {
   }
 
   async home(viewer?: Viewer | null) {
-    const audience = audienceWhere(viewer);
+    const mode = await readCatalogueMode(this.prisma);
+    const audience = audienceWhere(viewer, mode);
     const [newest, movies, series, genres, topTitleIds] = await Promise.all([
       this.prisma.title.findMany({
         where: { ...audience },
@@ -140,9 +143,7 @@ export class TitlesService {
         FROM watch_history wh
         JOIN episodes e ON e.id = wh.episode_id
         JOIN titles t ON t.id = e.title_id
-        WHERE ${Prisma.raw(
-          canPreviewAll(viewer) ? 'TRUE' : isTestViewer(viewer) ? 't.is_test = true' : 't.published = true',
-        )}
+        WHERE ${Prisma.raw(audienceSql(viewer, mode))}
         GROUP BY e.title_id
         ORDER BY viewers DESC
         LIMIT 10
@@ -178,7 +179,10 @@ export class TitlesService {
     if (topTitleIds.length > 0) {
       const ids = topTitleIds.map((r) => r.title_id);
       const rows = await this.prisma.title.findMany({
-        where: { id: { in: ids } },
+        // The ids already come from an audience-filtered query, so this is
+        // belt and braces — but it means the rail cannot start leaking if
+        // that SQL is ever edited, which is precisely how it leaked before.
+        where: { ...audience, id: { in: ids } },
         include: TitlesService.cardEpisodeInclude,
       });
       const byId = new Map(rows.map((t) => [t.id.toString(), t]));
@@ -202,9 +206,10 @@ export class TitlesService {
   /** Titles sharing at least one genre — "More Like This". Falls back to
    *  newest published titles when the source title has no genres. */
   async similar(slug: string, viewer?: Viewer | null) {
-    const audience = audienceWhere(viewer);
+    const mode = await readCatalogueMode(this.prisma);
+    const audience = audienceWhere(viewer, mode);
     const title = await this.prisma.title.findFirst({
-      where: { slug, ...audienceWhere(viewer) },
+      where: { slug, ...audienceWhere(viewer, mode) },
       include: { genres: true },
     });
     if (!title) throw new NotFoundException('Title not found.');
