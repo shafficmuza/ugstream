@@ -19,6 +19,7 @@ type FormState = Pick<
   | 'heroBackgroundUrl'
   | 'authBackgroundUrl'
 > & {
+  catalogueMode: string;
   mobileMoneyProvider: string;
   smsProvider: string;
   maxSessions: number;
@@ -105,6 +106,7 @@ function clearable(v: string | null): string | null {
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState<FormState>({
+    catalogueMode: 'test',
     appName: '',
     tagline: '',
     supportEmail: '',
@@ -214,6 +216,7 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     apiFetch<AppSettings>('/settings').then((settings) => {
       setForm({
+        catalogueMode: settings.catalogueMode ?? 'test',
         appName: settings.appName,
         tagline: settings.tagline ?? '',
         supportEmail: settings.supportEmail ?? '',
@@ -326,6 +329,7 @@ export default function AdminSettingsPage() {
         method: 'PATCH',
         token,
         body: {
+          catalogueMode: form.catalogueMode,
           appName: form.appName,
           tagline: form.tagline || undefined,
           // Support fields send null, not undefined, when emptied. Prisma skips
@@ -373,6 +377,27 @@ export default function AdminSettingsPage() {
       </div>
 
       <form onSubmit={save}>
+        <h2 style={{ fontSize: 16, marginBottom: 4 }}>Catalogue</h2>
+        <p style={{ opacity: 0.6, fontSize: 13, marginBottom: 12 }}>
+          What the whole site serves, on every domain, to everyone — including visitors who have
+          never signed in. In <b>Test</b> mode only titles marked <b>for test</b> are shown
+          anywhere, and the published catalogue is reachable solely by accounts you have given
+          <b> Early access</b>. Switch to <b>Live</b> on launch day.
+        </p>
+        <select
+          style={{ ...inputStyle, marginBottom: 4 }}
+          value={form.catalogueMode ?? 'test'}
+          onChange={(e) => setForm((f) => ({ ...f, catalogueMode: e.target.value }))}
+        >
+          <option value="test">Test — everyone sees the test catalogue</option>
+          <option value="live">Live — everyone sees published titles</option>
+        </select>
+        <p style={{ fontSize: 12, marginBottom: 24, color: (form.catalogueMode ?? 'test') === 'test' ? '#e0a33e' : '#5cb85c' }}>
+          {(form.catalogueMode ?? 'test') === 'test'
+            ? 'Test mode is ON. Published titles are hidden from everyone except Early access accounts.'
+            : 'Live mode. Published titles are visible to all visitors.'}
+        </p>
+
         <label style={labelStyle}>App name</label>
         <input
           style={inputStyle}
