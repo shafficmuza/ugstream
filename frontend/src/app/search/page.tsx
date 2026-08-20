@@ -1,4 +1,5 @@
 import { apiFetch } from '@/lib/api';
+import { apiFetchAsViewer } from '@/lib/api-server';
 import { PosterGrid } from '@/components/poster-grid';
 import { TitleCardData } from '@/components/title-card';
 
@@ -14,7 +15,7 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
   let genres: GenreRef[] = [];
   if (q) {
     [{ items }, genres] = await Promise.all([
-      apiFetch<{ items: TitleCardData[] }>(`/titles?q=${encodeURIComponent(q)}&per_page=48`),
+      apiFetchAsViewer<{ items: TitleCardData[] }>(`/titles?q=${encodeURIComponent(q)}&per_page=48`),
       apiFetch<GenreRef[]>('/genres').catch(() => [] as GenreRef[]),
     ]);
   }

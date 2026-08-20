@@ -63,6 +63,31 @@ export function readRefreshCookie(cookieHeader: string | undefined): string | nu
  */
 const AUDIENCE_COOKIE = 'ugs_aud';
 
+/**
+ * Reads the audience hint back off an incoming request.
+ *
+ * The cookie was always meant to be read on the way in — that is the whole
+ * reason it exists — but only the writing half shipped, so every
+ * server-rendered catalogue page kept asking as an anonymous visitor and a
+ * tester was served the live catalogue on the web.
+ *
+ * Returns a display-only viewer: no account, no session, nothing that could
+ * be mistaken for authentication. Forging it changes which list is rendered
+ * and grants nothing, exactly as the test-catalogue endpoints below it are
+ * already public to anyone holding the tester link.
+ */
+export function readAudienceCookie(cookieHeader: string | undefined): { isTester: true } | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === AUDIENCE_COOKIE) {
+      return part.slice(eq + 1).trim() === 'test' ? { isTester: true } : null;
+    }
+  }
+  return null;
+}
+
 function setAudienceCookie(res: Response, isTester: boolean) {
   res.cookie(AUDIENCE_COOKIE, isTester ? 'test' : 'live', {
     httpOnly: true,

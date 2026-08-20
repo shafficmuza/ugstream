@@ -18,7 +18,7 @@ export interface ApiError {
  */
 export async function apiFetch<T>(
   path: string,
-  opts: { method?: string; body?: unknown; token?: string } = {},
+  opts: { method?: string; body?: unknown; token?: string; cookie?: string } = {},
 ): Promise<T> {
   const send = (token?: string) =>
     fetch(`${API_BASE}${path}`, {
@@ -26,6 +26,9 @@ export async function apiFetch<T>(
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // Server-rendered pages have no browser to attach cookies for them,
+        // so the caller forwards the ones that matter (see api-server.ts).
+        ...(opts.cookie ? { Cookie: opts.cookie } : {}),
       },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       cache: 'no-store',

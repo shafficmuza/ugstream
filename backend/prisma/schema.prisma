@@ -200,9 +200,12 @@ model User {
   address      String?   @db.VarChar(200)
   role         UserRole  @default(user)
   status       UserStatus @default(active)
-  // Puts this account on the test catalogue instead of the live one. Off for
-  // everyone by default, so no existing account changes behaviour.
-  isTester     Boolean   @default(false) @map("is_tester")
+  // Puts this account on the test catalogue instead of the live one.
+  //
+  // ON by default: while the live catalogue is held back, someone who signs
+  // up today is a tester until an admin says otherwise. The default governs
+  // new rows only, so no existing account changes audience when this ships.
+  isTester     Boolean   @default(true) @map("is_tester")
   // Sees every title regardless of whether it is published — an early-access
   // whitelist for a handful of named people while the catalogue is held back.
   // Deliberately separate from isTester rather than a mode of it: the two

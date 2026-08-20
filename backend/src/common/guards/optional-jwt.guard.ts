@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { readAudienceCookie } from '../../auth/auth.controller';
 
 /**
  * Identifies the caller when it can, and lets the request through when it
@@ -17,6 +18,14 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Never throws. A malformed, expired or revoked token is not an error here,
  * it just means "not identified" — making a bad token fail an otherwise public
  * page would be a worse outcome than showing it the public catalogue.
+ *
+ * Also resolves `req.audience`, which is what the catalogue endpoints read.
+ * An identified account always decides its own audience. Only when there is
+ * no account to ask does the display-only cookie get a say — which is the
+ * case for every server-rendered web page, where the browser's token is not
+ * available while Next builds the HTML. Without that fallback a tester
+ * browsing the website was served the live catalogue no matter what the
+ * admin had toggled.
  */
 @Injectable()
 export class OptionalJwtGuard implements CanActivate {
@@ -29,7 +38,10 @@ export class OptionalJwtGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
     const header: string | undefined = req.headers?.authorization;
-    if (!header?.startsWith('Bearer ')) return true;
+    if (!header?.startsWith('Bearer ')) {
+      req.audience = readAudienceCookie(req.headers?.cookie);
+      return true;
+    }
 
     try {
       const payload = await this.jwt.verifyAsync<{ sub: string; sid: string }>(
@@ -54,6 +66,10 @@ export class OptionalJwtGuard implements CanActivate {
     } catch {
       // Not identified. The endpoint stays public.
     }
+
+    // The account's own flags win whenever we have them; the cookie only
+    // answers for a request that arrived without a usable token.
+    req.audience = req.auth ?? readAudienceCookie(req.headers?.cookie);
     return true;
   }
 }
