@@ -15,6 +15,13 @@ const noMasterCode = () =>
 const noDevBypass = () =>
   ({ matches: async () => false, recordFailure: async () => undefined }) as any;
 
+/**
+ * Nor Twilio Verify: these are Ugandan numbers, which Verify never handles,
+ * and `isConfigured` false keeps the limits keyed on the SMS gateways alone.
+ */
+const noTwilioVerify = () =>
+  ({ isConfigured: async () => false, shouldUseFor: async () => false, start: async () => false }) as any;
+
 /** Nor a PIN — these accounts sign in by code. */
 const noPins = () => ({ isAvailableFor: async () => false }) as any;
 
@@ -70,6 +77,7 @@ function makeService(opts: {
     noMasterCode(),
     noDevBypass(),
     noPins(),
+    noTwilioVerify(),
   );
   return { service, sms, create, count, findFirst };
 }

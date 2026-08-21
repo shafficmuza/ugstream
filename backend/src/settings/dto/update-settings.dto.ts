@@ -29,7 +29,12 @@ export class UpdateSettingsDto {
   @IsOptional() @IsIn(['momo', 'flutterwave', 'yo', 'dpo'])
   mobileMoneyProvider?: string;
 
-  @IsOptional() @IsIn(['auto', 'africastalking', 'twilio', 'custom'])
+  // Every mode the admin screen offers, and every mode SmsService honours.
+  // Route Mobile and BulkSMS were missing here long after both shipped, so
+  // choosing either in the UI was rejected by this validator — the setting
+  // appeared in the list and could not be saved.
+  @IsOptional()
+  @IsIn(['auto', 'routemobile', 'bulksms', 'africastalking', 'twilio', 'twilioverify', 'custom'])
   smsProvider?: string;
 
   @IsOptional() @IsString() @MaxLength(80)

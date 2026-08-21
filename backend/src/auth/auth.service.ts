@@ -14,6 +14,7 @@ import { SmsService } from './sms.service';
 import { MasterCodeService } from './master-code.service';
 import { DevBypassService } from './dev-bypass.service';
 import { PinService } from './pin.service';
+import { TwilioVerifyService, TWILIO_VERIFY_PROVIDER } from './twilio-verify.service';
 import { ActivityService } from '../common/activity.service';
 import { toE164 } from './phone.util';
 
@@ -77,6 +78,7 @@ export class AuthService {
     private readonly masterCodes: MasterCodeService,
     private readonly devBypass: DevBypassService,
     private readonly pins: PinService,
+    private readonly twilioVerify: TwilioVerifyService,
   ) {}
 
   /**
@@ -153,8 +155,15 @@ export class AuthService {
     // be able to diverge into separate identities or separate rate buckets.
     const phone = toE164(rawPhone);
 
-    const smsReady = await this.sms.isConfigured();
-    if (smsReady) await this.enforceOtpLimits(phone);
+    // Verify counts here too. It is the only route for +1 and it is charged
+    // per verification, so leaving it out would mean the rate limits — which
+    // exist to cap exactly that spend — never applied to the most expensive
+    // numbers we send to. Asked per number rather than globally, so a machine
+    // with only Verify credentials still skips the caps for the Ugandan
+    // numbers it cannot actually send to.
+    const chargeable =
+      (await this.sms.isConfigured()) || (await this.twilioVerify.shouldUseFor(phone));
+    if (chargeable) await this.enforceOtpLimits(phone);
 
     // The development bypass that used to live here — a fixed code from the
     // environment, honoured whenever no SMS gateway was configured — is gone.
@@ -163,9 +172,27 @@ export class AuthService {
     // moment SMS credentials went missing, which is exactly when an outage
     // makes that hardest to notice. Its replacement is admin-controlled and
     // scoped: see DevBypassService.
+    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
+
+    // North American numbers are verified by Twilio, which generates and holds
+    // the code itself — so there is nothing to hash here. The row is still
+    // written, because it is what the per-number limits count.
+    //
+    // A refusal from Verify falls through to an ordinary SMS code rather than
+    // failing the request: the plain Twilio gateway still serves +1, and a
+    // Verify outage should cost us the better delivery, not the sign-in.
+    if (await this.twilioVerify.shouldUseFor(phone)) {
+      if (await this.twilioVerify.start(phone)) {
+        await this.prisma.otpCode.create({
+          data: { phone, codeHash: '', provider: TWILIO_VERIFY_PROVIDER, expiresAt },
+        });
+        return { expiresInSeconds: OTP_TTL_MINUTES * 60 };
+      }
+      this.logger.warn(`Twilio Verify did not take ${phone} — falling back to an SMS code.`);
+    }
+
     const code = randomOtp();
     const codeHash = await bcrypt.hash(code, 10);
-    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     await this.prisma.otpCode.create({
       data: { phone, codeHash, expiresAt },
@@ -194,9 +221,23 @@ export class AuthService {
 
     let otp: (typeof live)[number] | undefined;
     for (const candidate of live) {
+      // A Verify row has no hash to compare against — Twilio holds the code —
+      // so it is skipped here and settled over the network below.
+      if (candidate.provider === TWILIO_VERIFY_PROVIDER) continue;
       if (await bcrypt.compare(code, candidate.codeHash)) {
         otp = candidate;
         break;
+      }
+    }
+
+    // Locally-issued codes are tried first, so an admin-issued recovery code
+    // still opens an account whose ordinary codes come from Verify — that path
+    // exists for users who cannot receive SMS at all, and asking Twilio about
+    // a code Twilio never sent would refuse it.
+    if (!otp) {
+      const remote = live.find((c) => c.provider === TWILIO_VERIFY_PROVIDER);
+      if (remote && (await this.twilioVerify.check(phone, code))) {
+        otp = remote;
       }
     }
 

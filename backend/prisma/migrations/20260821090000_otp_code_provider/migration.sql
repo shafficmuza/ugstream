@@ -1,0 +1,11 @@
+-- Which system holds an OTP's code.
+--
+-- Codes issued through Twilio Verify never exist on this server: Twilio
+-- generates, delivers and checks them, so there is no hash to store and
+-- code_hash is left empty. The row is still written because the per-number
+-- rate limits count rows — it is the record that a verification was paid for.
+--
+-- Nullable with no backfill: every existing row is a locally-issued code, and
+-- null continues to mean exactly that, so nothing already outstanding changes
+-- meaning mid-flight.
+ALTER TABLE "otp_codes" ADD COLUMN "provider" VARCHAR(20);

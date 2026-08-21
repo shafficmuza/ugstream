@@ -20,6 +20,9 @@ const noDevBypass = () =>
   ({ matches: async () => false, recordFailure: async () => undefined }) as any;
 
 /** Nor a PIN — these accounts sign in by code. */
+/** Refresh never reaches Verify — the code path ended at sign-in. */
+const noTwilioVerify = () => ({ isConfigured: async () => false, shouldUseFor: async () => false }) as any;
+
 const noPins = () => ({ isAvailableFor: async () => false }) as any;
 
 async function makeService(sessionOverrides: Record<string, any> = {}) {
@@ -61,7 +64,7 @@ async function makeService(sessionOverrides: Record<string, any> = {}) {
 
   const jwt = { signAsync: jest.fn(async () => 'access-token') };
   const config = { get: jest.fn(() => 'secret') };
-  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any, noMasterCode(), noDevBypass(), noPins());
+  const service = new AuthService(prisma, jwt as any, config as any, {} as any, {} as any, noMasterCode(), noDevBypass(), noPins(), noTwilioVerify());
   return { service, session, secret, lookup, update, updateMany, prisma };
 }
 
@@ -253,6 +256,7 @@ describe('tokens issued before the lookup format existed', () => {
       noMasterCode(),
       noDevBypass(),
       noPins(),
+      noTwilioVerify(),
     );
 
     const out = await service.refresh(legacy);

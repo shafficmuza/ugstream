@@ -12,16 +12,22 @@ import { AuthService } from './auth.service';
  * screen requires that press before a code can be entered at all.
  */
 async function makeService(
-  codes: { id: number; code: string; attempts?: number }[],
+  codes: { id: number; code: string; attempts?: number; provider?: string }[],
   master?: { code: string; user?: Record<string, any> | null },
+  /** The code Twilio Verify would approve, for rows issued through it. */
+  twilioCode?: string,
 ) {
   const rows = await Promise.all(
     codes.map(async (c) => ({
       id: BigInt(c.id),
       phone: '+256772878614',
-      codeHash: await bcrypt.hash(c.code, 4),
+      // A Verify row genuinely has no hash — Twilio holds the code — so the
+      // fixture stores none either. Comparing against this is the bug the
+      // production code avoids by skipping such rows.
+      codeHash: c.provider === 'twilioverify' ? '' : await bcrypt.hash(c.code, 4),
       attempts: c.attempts ?? 0,
       consumedAt: null,
+      provider: c.provider ?? null,
       expiresAt: new Date(Date.now() + 300_000),
     })),
   );
@@ -80,6 +86,14 @@ async function makeService(
     recordUse,
   };
 
+  const twilioCheck = jest.fn(async (_phone: string, submitted: string) => submitted === twilioCode);
+  const twilioVerify: any = {
+    isConfigured: async () => twilioCode !== undefined,
+    shouldUseFor: async () => false,
+    start: async () => true,
+    check: twilioCheck,
+  };
+
   const service = new AuthService(
     prisma,
     { signAsync: jest.fn(async () => 'access-token') } as any,
@@ -89,8 +103,9 @@ async function makeService(
     masterCode,
     { matches: async () => false, recordFailure: async () => undefined } as any,
     { isAvailableFor: async () => false, verify: async () => { throw new Error('no pin'); } } as any,
+    twilioVerify,
   );
-  return { service, prisma, updateMany, masterCode, recordFailure, recordUse };
+  return { service, prisma, updateMany, masterCode, recordFailure, recordUse, twilioCheck };
 }
 
 describe('verifyOtp with several live codes', () => {
@@ -264,5 +279,68 @@ describe('verifyOtp with the master sign-in code', () => {
     const ok = await makeService([], { code: '424242' });
     await ok.service.verifyOtp('0772878614', '424242');
     expect(ok.recordUse).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+/**
+ * Codes issued through Twilio Verify, which is how North American numbers are
+ * verified. Nothing about them is checkable here — Twilio generated the code,
+ * delivered it and is the only thing that can say whether it was right — so
+ * the risks are the two ends of that: treating the empty local hash as
+ * something to compare, and asking Twilio about codes it never issued.
+ */
+describe('codes held by Twilio Verify', () => {
+  it('signs in on a code Twilio approves', async () => {
+    const { service, updateMany, twilioCheck } = await makeService(
+      [{ id: 1, code: '', provider: 'twilioverify' }],
+      undefined,
+      '123456',
+    );
+
+    const out = await service.verifyOtp('+256772878614', '123456');
+    expect(out.accessToken).toBe('access-token');
+    expect(twilioCheck).toHaveBeenCalledWith('+256772878614', '123456');
+    // Every outstanding code is retired on success, exactly as for a local one.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { consumedAt: expect.any(Date) } }),
+    );
+  });
+
+  it('refuses a code Twilio does not approve', async () => {
+    const { service, twilioCheck } = await makeService(
+      [{ id: 1, code: '', provider: 'twilioverify' }],
+      undefined,
+      '123456',
+    );
+
+    await expect(service.verifyOtp('+256772878614', '000000')).rejects.toThrow(UnauthorizedException);
+    expect(twilioCheck).toHaveBeenCalled();
+  });
+
+  it('never treats the empty hash as a match', async () => {
+    // bcrypt.compare against '' is false rather than an error, so a bug here
+    // would not throw — it would silently accept nothing, or worse, be reached
+    // at all. The row must be skipped outright.
+    const { service } = await makeService([{ id: 1, code: '', provider: 'twilioverify' }]);
+    await expect(service.verifyOtp('+256772878614', '')).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('prefers a local admin-issued code and never asks Twilio for it', async () => {
+    // Support issues recovery codes to users who cannot receive SMS at all.
+    // Such a code is local even on a number whose ordinary codes come from
+    // Verify, and Twilio would refuse it — so it must be matched here first.
+    const { service, twilioCheck } = await makeService(
+      [
+        { id: 1, code: '', provider: 'twilioverify' },
+        { id: 2, code: '654321' },
+      ],
+      undefined,
+      '123456',
+    );
+
+    const out = await service.verifyOtp('+256772878614', '654321');
+    expect(out.accessToken).toBe('access-token');
+    expect(twilioCheck).not.toHaveBeenCalled();
   });
 });

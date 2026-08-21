@@ -33,7 +33,7 @@ const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
   {
     value: 'auto',
     label: 'Automatic — best route per network (recommended)',
-    hint: 'Ugandan Airtel numbers (070/074/075) go via Route Mobile. Everything else — including Ugandan MTN — goes via BulkSMS, and +1 numbers via Twilio, which BulkSMS does not serve. Route Mobile is deliberately NOT used for MTN: it reports success and delivers nothing on that network. If a gateway has no credentials, the next one that can reach the number is used instead.',
+    hint: 'Ugandan Airtel numbers (070/074/075) go via Route Mobile. Everything else — including Ugandan MTN — goes via BulkSMS, and +1 numbers (USA, Canada, Caribbean) through Twilio Verify, which BulkSMS does not serve. Route Mobile is deliberately NOT used for MTN: it reports success and delivers nothing on that network. If a gateway has no credentials, the next one that can reach the number is used instead.',
   },
   {
     value: 'routemobile',
@@ -56,6 +56,11 @@ const SMS_OPTIONS: { value: string; label: string; hint: string }[] = [
     hint: 'Every code is sent through Twilio, including Ugandan numbers at roughly 30x the cost. Use during an Africa’s Talking outage.',
   },
   {
+    value: 'twilioverify',
+    label: 'Twilio Verify only',
+    hint: 'Every number is verified by Twilio Verify, including Ugandan ones — Verify charges a fee per verification on top of the message, so this costs far more than Route Mobile or BulkSMS at home. Use it only while the other gateways are down. In Automatic mode Verify already handles +1 on its own, which is what it is there for.',
+  },
+  {
     value: 'custom',
     label: 'Custom gateway only',
     hint: 'Every code is sent through the gateway you configure below. Use this to add a local provider — it needs no app update, because the apps only ever call this server, never the SMS gateway.',
@@ -67,11 +72,12 @@ const SMS_PROVIDER_LABELS: Record<string, string> = {
   bulksms: 'BulkSMS — Uganda and worldwide except USA/Canada',
   africastalking: "Africa's Talking — East African numbers",
   twilio: 'Twilio — international numbers',
+  twilioverify: 'Twilio Verify — USA, Canada and Caribbean (+1), on the Twilio account above',
   custom: 'Custom gateway — any provider with an HTTP API',
 };
 
-/** What each custom-gateway field is for, shown beside its input. */
-const SMS_CUSTOM_HINTS: Record<string, string> = {
+/** What each credential field is for, shown beneath its input. */
+const SMS_KEY_HINTS: Record<string, string> = {
   SMS_RML_USERNAME: 'Route Mobile account username (same credentials as the SMS Vibe platform).',
   SMS_RML_PASSWORD: 'Route Mobile account password.',
   SMS_RML_ENDPOINT: 'Defaults to https://dstr.connectbind.com:8443/sendsms',
@@ -80,6 +86,12 @@ const SMS_CUSTOM_HINTS: Record<string, string> = {
   SMS_BULKSMS_TOKEN_SECRET: 'Shown once when the token is created. Revoke and reissue here if it leaks.',
   SMS_BULKSMS_SENDER_ID:
     'Optional. The name codes appear from, e.g. PROMEDIA — it must already be registered on your BulkSMS account. An unregistered name is rejected and nobody receives a code; leave blank to use the shared numeric pool.',
+  SMS_TWILIO_ACCOUNT_SID: 'From the Twilio Console dashboard. Starts with AC. Shared with Twilio Verify below.',
+  SMS_TWILIO_AUTH_TOKEN: 'From the same dashboard panel as the account SID.',
+  SMS_TWILIO_FROM:
+    'The Twilio number plain SMS is sent from, in E.164, e.g. +14155550123. Not used by Twilio Verify, which sends from Twilio’s own registered senders.',
+  SMS_TWILIO_VERIFY_SERVICE_SID:
+    'From Twilio Console → Verify → Services. Starts with VA. The service’s friendly name is what subscribers see in the message (“Your <name> verification code is …”), so set it there. Leave this blank and +1 numbers fall back to plain Twilio SMS.',
   SMS_CUSTOM_URL: 'Required. The provider’s send endpoint, e.g. https://api.example.com/sms/send',
   SMS_CUSTOM_METHOD: 'POST (default) or GET.',
   SMS_CUSTOM_HEADERS: 'Optional JSON object, e.g. {"Authorization":"Bearer abc123"}',
@@ -658,6 +670,9 @@ export default function AdminSettingsPage() {
                   value={smsInputs[k.key] ?? ''}
                   onChange={(e) => setSmsInputs((c) => ({ ...c, [k.key]: e.target.value }))}
                 />
+                {SMS_KEY_HINTS[k.key] && (
+                  <div style={{ fontSize: 11, opacity: 0.55, marginTop: 4 }}>{SMS_KEY_HINTS[k.key]}</div>
+                )}
               </div>
             ))}
           </div>

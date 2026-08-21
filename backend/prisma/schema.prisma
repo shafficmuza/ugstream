@@ -15,18 +15,18 @@ model AppSettings {
   // Singleton row — always id=1. Enforced in the service layer (upsert on
   // a fixed id), not via a DB constraint, since Prisma has no clean way to
   // express "at most one row" beyond that.
-  id                Int      @id @default(1)
+  id                  Int       @id @default(1)
   // 'test' | 'live'. In test mode the whole site serves the test catalogue to
   // everyone — anonymous visitors included — and only an Early access account
   // sees the published one. Defaults to test because that is the state the
   // platform is in before launch; flipping it to 'live' on launch day is the
   // switch, and needs no deploy. See titles/audience.ts.
-  catalogueMode     String   @default("test") @map("catalogue_mode")
-  appName           String   @default("ugstream")
-  logoUrl           String?
-  tagline           String?
-  supportEmail      String?  @map("support_email")
-  supportPhone      String?  @map("support_phone")
+  catalogueMode       String    @default("test") @map("catalogue_mode")
+  appName             String    @default("ugstream")
+  logoUrl             String?
+  tagline             String?
+  supportEmail        String?   @map("support_email")
+  supportPhone        String?   @map("support_phone")
   // The app's "Contact us" section. WhatsApp is a separate field from
   // supportPhone because the number people call is not always the number that
   // answers on WhatsApp, and the app turns this one into a tappable wa.me
@@ -37,26 +37,26 @@ model AppSettings {
   // contact options: without it a message sent at midnight reads as ignored,
   // and the right wording changes with staffing, so it is admin-editable
   // rather than a string in the mobile build.
-  supportWhatsapp   String?  @map("support_whatsapp")
-  supportHours      String?  @map("support_hours")
+  supportWhatsapp     String?   @map("support_whatsapp")
+  supportHours        String?   @map("support_hours")
   // Swappable background art — admin-uploaded, no redeploy needed to
   // change the "feel" of the site. Separate fields since the login page
   // is a small centered form (wants a moodier, less busy image) while the
   // homepage hero is wide — same image works for both if that's all an
   // admin wants to manage, but doesn't have to be.
-  heroBackgroundUrl String?  @map("hero_background_url")
-  authBackgroundUrl String?  @map("auth_background_url")
+  heroBackgroundUrl   String?   @map("hero_background_url")
+  authBackgroundUrl   String?   @map("auth_background_url")
   // Which mobile-money processor is active for mobile-money checkouts:
   // 'momo' (MTN direct) | 'flutterwave' | 'yo' | 'dpo'. Card always goes to
   // Stripe. Admin flips this in the UI; the actual API credentials live in
   // env, never the DB.
-  mobileMoneyProvider String @default("momo") @map("mobile_money_provider") @db.VarChar(20)
+  mobileMoneyProvider String    @default("momo") @map("mobile_money_provider") @db.VarChar(20)
   // SMS/OTP routing: 'auto' | 'africastalking' | 'twilio'. Under 'auto' each
   // number is routed by country code — East African numbers to Africa's
   // Talking at ~$0.01, everything else to Twilio, which is under a cent for
   // US/UK numbers but ~$0.30 to Uganda. The forced modes exist for outages.
   // Credentials live in the secrets store; admin flips this in the UI.
-  smsProvider       String   @default("auto") @map("sms_provider") @db.VarChar(20)
+  smsProvider         String    @default("auto") @map("sms_provider") @db.VarChar(20)
   // Per-number OTP limits. Admin-tunable because the right numbers depend on
   // what a message costs, and because an SMS-pumping attack is something you
   // need to be able to clamp down on at 2am without shipping a deploy.
@@ -66,16 +66,16 @@ model AppSettings {
   // Twilio traffic from a single address and unbounded across a botnet.
   //
   // 0 means unlimited on each, handled explicitly by the enforcing code.
-  otpCooldownSeconds Int     @default(60) @map("otp_cooldown_seconds")
-  otpPerHour         Int     @default(3) @map("otp_per_hour")
-  otpPerDay          Int     @default(10) @map("otp_per_day")
+  otpCooldownSeconds  Int       @default(60) @map("otp_cooldown_seconds")
+  otpPerHour          Int       @default(3) @map("otp_per_hour")
+  otpPerDay           Int       @default(10) @map("otp_per_day")
   // Push notifications. `pushEnabled` is the master switch so a noisy release
   // can be silenced without a deploy. `pushAudience` is 'all' | 'subscribers':
   // new-title alerts default to everyone because they are the main lever for
   // converting signed-up-but-not-paying users, but that is a business call an
   // admin may want to reverse.
-  pushEnabled       Boolean  @default(true) @map("push_enabled")
-  pushAudience      String   @default("all") @map("push_audience") @db.VarChar(20)
+  pushEnabled         Boolean   @default(true) @map("push_enabled")
+  pushAudience        String    @default("all") @map("push_audience") @db.VarChar(20)
   // Account-sharing limits, both admin-tunable because the right number is a
   // commercial decision that changes with pricing, not an engineering one.
   //
@@ -87,8 +87,8 @@ model AppSettings {
   // household legitimately keeps several devices signed in while only ever
   // watching on one or two, and conflating the two would either permit
   // wholesale password sharing or punish normal use.
-  maxSessions       Int      @default(3) @map("max_sessions")
-  maxStreams        Int      @default(2) @map("max_streams")
+  maxSessions         Int       @default(3) @map("max_sessions")
+  maxStreams          Int       @default(2) @map("max_streams")
   // Development sign-in bypass: a fixed code that stands in for the SMS one on
   // a named handful of numbers, so the team can sign in while building without
   // paying for or waiting on a message.
@@ -102,12 +102,12 @@ model AppSettings {
   // minute of scripted traffic; the counter disables the bypass long before a
   // search gets anywhere. It resets on every successful use, so ordinary
   // typing never walks it up to the limit.
-  devBypassEnabled  Boolean  @default(false) @map("dev_bypass_enabled")
-  devBypassCodeHash String?  @map("dev_bypass_code_hash")
-  devBypassPhones   String[] @default([]) @map("dev_bypass_phones")
-  devBypassFailures Int      @default(0) @map("dev_bypass_failures")
-  devBypassSetAt    DateTime? @map("dev_bypass_set_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  devBypassEnabled    Boolean   @default(false) @map("dev_bypass_enabled")
+  devBypassCodeHash   String?   @map("dev_bypass_code_hash")
+  devBypassPhones     String[]  @default([]) @map("dev_bypass_phones")
+  devBypassFailures   Int       @default(0) @map("dev_bypass_failures")
+  devBypassSetAt      DateTime? @map("dev_bypass_set_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   @@map("app_settings")
 }
@@ -195,30 +195,30 @@ enum UserStatus {
 }
 
 model User {
-  id           BigInt    @id @default(autoincrement())
+  id             BigInt     @id @default(autoincrement())
   // E.164, normalised on every auth path (see auth/phone.util.ts). 15 digits
   // is the E.164 maximum, so the '+' needs a 16th character — the old
   // VarChar(15) would have rejected the longest legitimate international
   // numbers outright.
-  phone        String    @unique @db.VarChar(20)
-  displayName  String?   @map("display_name") @db.VarChar(100)
-  email        String?   @db.VarChar(120)
-  address      String?   @db.VarChar(200)
-  role         UserRole  @default(user)
-  status       UserStatus @default(active)
+  phone          String     @unique @db.VarChar(20)
+  displayName    String?    @map("display_name") @db.VarChar(100)
+  email          String?    @db.VarChar(120)
+  address        String?    @db.VarChar(200)
+  role           UserRole   @default(user)
+  status         UserStatus @default(active)
   // Puts this account on the test catalogue instead of the live one.
   //
   // ON by default: while the live catalogue is held back, someone who signs
   // up today is a tester until an admin says otherwise. The default governs
   // new rows only, so no existing account changes audience when this ships.
-  isTester     Boolean   @default(true) @map("is_tester")
+  isTester       Boolean    @default(true) @map("is_tester")
   // Sees every title regardless of whether it is published — an early-access
   // whitelist for a handful of named people while the catalogue is held back.
   // Deliberately separate from isTester rather than a mode of it: the two
   // answer different questions, and folding them together would change what
   // an existing tester account sees the moment this is switched on.
-  canPreviewAll Boolean  @default(false) @map("can_preview_all")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  canPreviewAll  Boolean    @default(false) @map("can_preview_all")
+  createdAt      DateTime   @default(now()) @map("created_at")
   // Optional sign-in PIN, set by the user after their first verified sign-in.
   // Once set, returning sign-ins cost nothing: no SMS is sent at all. The OTP
   // path stays available as the way back in when the PIN is forgotten or
@@ -227,10 +227,10 @@ model User {
   // A four-digit PIN is only ten thousand guesses, so pinFailures/pinLockedUntil
   // are not optional extras — they are what makes this safe to offer at all.
   // Both reset on a correct PIN, so ordinary fumbling never accumulates.
-  pinHash        String?   @map("pin_hash")
-  pinSetAt       DateTime? @map("pin_set_at")
-  pinFailures    Int       @default(0) @map("pin_failures")
-  pinLockedUntil DateTime? @map("pin_locked_until")
+  pinHash        String?    @map("pin_hash")
+  pinSetAt       DateTime?  @map("pin_set_at")
+  pinFailures    Int        @default(0) @map("pin_failures")
+  pinLockedUntil DateTime?  @map("pin_locked_until")
 
   sessions      Session[]
   payments      Payment[]
@@ -245,23 +245,28 @@ model User {
 }
 
 model OtpCode {
-  id         BigInt    @id @default(autoincrement())
+  id              BigInt    @id @default(autoincrement())
   // E.164, so wide enough for the longest international number plus '+'.
-  phone      String    @db.VarChar(20)
-  codeHash   String    @map("code_hash")
+  phone           String    @db.VarChar(20)
+  codeHash        String    @map("code_hash")
   // Send time, which is what the per-number rate limits count. Previously
   // inferred from expiresAt; that worked only while every code had the same
   // TTL and silently skewed every window by it.
-  createdAt  DateTime  @default(now()) @map("created_at")
-  expiresAt  DateTime  @map("expires_at")
-  consumedAt DateTime? @map("consumed_at")
-  attempts   Int       @default(0) @db.SmallInt
+  createdAt       DateTime  @default(now()) @map("created_at")
+  expiresAt       DateTime  @map("expires_at")
+  consumedAt      DateTime? @map("consumed_at")
+  attempts        Int       @default(0) @db.SmallInt
   // Set when an admin issued this code by hand for a user who cannot receive
   // SMS. Such codes send no message and cost nothing, so they are excluded
   // from the per-number rate limits — those exist to cap spend, and counting
   // a free code against them would leave the user unable to reach the screen
   // where the code is entered. Also the audit trail: who issued it.
-  issuedByAdminId BigInt? @map("issued_by_admin_id")
+  issuedByAdminId BigInt?   @map("issued_by_admin_id")
+  // Which system holds the code. Null (the default, and every historical row)
+  // means this server does, in code_hash. 'twilioverify' means Twilio does:
+  // the row exists only so the per-number rate limits have something to count,
+  // and the code is checked over the network instead of against code_hash.
+  provider        String?   @db.VarChar(20)
 
   @@index([phone, expiresAt])
   @@index([phone, createdAt])
@@ -310,18 +315,18 @@ model MasterCode {
 // as gone, so a crashed app, a closed laptop lid or a dead battery frees the
 // slot on its own instead of stranding it until some manual cleanup.
 model StreamLease {
-  id         String    @id @default(uuid())
-  userId     BigInt    @map("user_id")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  userId      BigInt    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // The auth session (JWT `sid`) holding the slot.
-  sessionId  String    @map("session_id")
-  episodeId  BigInt    @map("episode_id")
-  deviceLabel String?  @map("device_label") @db.VarChar(100)
-  startedAt  DateTime  @default(now()) @map("started_at")
-  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  sessionId   String    @map("session_id")
+  episodeId   BigInt    @map("episode_id")
+  deviceLabel String?   @map("device_label") @db.VarChar(100)
+  startedAt   DateTime  @default(now()) @map("started_at")
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
   // Set when playback is stopped cleanly, so the slot frees immediately
   // rather than after the staleness window.
-  endedAt    DateTime? @map("ended_at")
+  endedAt     DateTime? @map("ended_at")
 
   // One live lease per auth session — the upsert key.
   @@unique([sessionId])
@@ -333,28 +338,28 @@ model StreamLease {
 // Nothing expires it on a timer: being asked to sign in again halfway through
 // a film is the single most user-hostile thing an app of this kind can do.
 model Session {
-  id           String    @id @default(uuid())
-  userId       BigInt    @map("user_id")
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String    @id @default(uuid())
+  userId          BigInt    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Public half of the refresh token (`lookup.verifier`), stored in the clear
   // so refresh is a single indexed read. Without it, verifying a token means
   // bcrypt-comparing against every live session in the system — which grows
   // linearly with users, and a refresh that takes seconds is itself a source
   // of the races this table now guards against. Nullable only for sessions
   // issued before this existed; those still verify by scan.
-  refreshLookup String?  @unique @map("refresh_lookup")
-  refreshHash  String    @map("refresh_hash")
+  refreshLookup   String?   @unique @map("refresh_lookup")
+  refreshHash     String    @map("refresh_hash")
   // The previous refresh token stays valid for a grace period after rotation.
   // A phone suspended by iOS between "server rotated" and "client persisted"
   // otherwise holds a token the server has already discarded, and the session
   // is dead through no fault of the user. Rotation is retained for its actual
   // purpose — a token replayed after the grace window is treated as theft.
-  prevRefreshHash String? @map("prev_refresh_hash")
+  prevRefreshHash String?   @map("prev_refresh_hash")
   prevRefreshAt   DateTime? @map("prev_refresh_at")
-  deviceLabel  String?   @map("device_label") @db.VarChar(100)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  lastSeenAt   DateTime  @default(now()) @map("last_seen_at")
-  revokedAt    DateTime? @map("revoked_at")
+  deviceLabel     String?   @map("device_label") @db.VarChar(100)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastSeenAt      DateTime  @default(now()) @map("last_seen_at")
+  revokedAt       DateTime? @map("revoked_at")
 
   @@index([userId])
   @@map("sessions")
@@ -381,32 +386,32 @@ enum TitleAccess {
 }
 
 model Title {
-  id           BigInt       @id @default(autoincrement())
-  kind         String       @default("movie") @db.VarChar(60)
-  name         String       @db.VarChar(200)
-  slug         String       @unique @db.VarChar(220)
-  description  String?
-  language     String?      @db.VarChar(30)
-  vjName       String?      @map("vj_name") @db.VarChar(100)
-  releaseYear  Int?         @map("release_year") @db.SmallInt
-  posterUrl    String?      @map("poster_url")
-  bannerUrl    String?      @map("banner_url")
-  access       TitleAccess  @default(subscription)
-  priceUgx     Int?         @map("price_ugx")
-  rentalHours  Int          @default(72) @map("rental_hours")
-  published    Boolean      @default(false)
+  id          BigInt      @id @default(autoincrement())
+  kind        String      @default("movie") @db.VarChar(60)
+  name        String      @db.VarChar(200)
+  slug        String      @unique @db.VarChar(220)
+  description String?
+  language    String?     @db.VarChar(30)
+  vjName      String?     @map("vj_name") @db.VarChar(100)
+  releaseYear Int?        @map("release_year") @db.SmallInt
+  posterUrl   String?     @map("poster_url")
+  bannerUrl   String?     @map("banner_url")
+  access      TitleAccess @default(subscription)
+  priceUgx    Int?        @map("price_ugx")
+  rentalHours Int         @default(72) @map("rental_hours")
+  published   Boolean     @default(false)
   // Visible to tester accounts instead of the public catalogue. Deliberately
   // a separate flag from `published` rather than a third state of it: the
   // query that serves ordinary viewers stays exactly as it was, so nothing
   // about what existing users see can change. A tester sees isTest titles and
   // nothing else; a normal account sees published titles and nothing else.
-  isTest       Boolean      @default(false) @map("is_test")
+  isTest      Boolean     @default(false) @map("is_test")
   // When the "new title" push went out. Publishing is a toggle an admin may
   // flip several times while fixing artwork or episodes, so this is what
   // stops every flip from re-notifying the whole user base. A deliberate
   // re-announcement goes through the admin resend action instead.
-  notifiedAt   DateTime?    @map("notified_at")
-  createdAt    DateTime     @default(now()) @map("created_at")
+  notifiedAt  DateTime?   @map("notified_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
 
   episodes      Episode[]
   genres        TitleGenre[]
@@ -445,7 +450,7 @@ model Episode {
   durationSecs  Int?         @map("duration_secs")
   thumbnailUrl  String?      @map("thumbnail_url")
 
-  watchHistory  WatchHistory[]
+  watchHistory WatchHistory[]
 
   @@unique([titleId, season, number])
   @@map("episodes")
@@ -471,11 +476,11 @@ model TitleGenre {
 }
 
 model Plan {
-  id           Int      @id @default(autoincrement())
-  name         String   @db.VarChar(50)
-  priceUgx     Int      @map("price_ugx")
-  durationDays Int      @map("duration_days") @db.SmallInt
-  active       Boolean  @default(true)
+  id           Int     @id @default(autoincrement())
+  name         String  @db.VarChar(50)
+  priceUgx     Int     @map("price_ugx")
+  durationDays Int     @map("duration_days") @db.SmallInt
+  active       Boolean @default(true)
 
   payments      Payment[]
   subscriptions Subscription[]
@@ -496,20 +501,20 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id            BigInt         @id @default(autoincrement())
-  userId        BigInt         @map("user_id")
-  user          User           @relation(fields: [userId], references: [id])
-  amountUgx     Int            @map("amount_ugx")
-  purpose       PaymentPurpose
-  planId        Int?           @map("plan_id")
-  plan          Plan?          @relation(fields: [planId], references: [id])
-  titleId       BigInt?        @map("title_id")
-  provider      String         @default("flutterwave") @db.VarChar(20)
-  providerRef   String?        @unique @map("provider_ref") @db.VarChar(100)
-  providerTxId  String?        @map("provider_txid") @db.VarChar(100)
-  status        PaymentStatus  @default(pending)
-  createdAt     DateTime       @default(now()) @map("created_at")
-  confirmedAt   DateTime?      @map("confirmed_at")
+  id           BigInt         @id @default(autoincrement())
+  userId       BigInt         @map("user_id")
+  user         User           @relation(fields: [userId], references: [id])
+  amountUgx    Int            @map("amount_ugx")
+  purpose      PaymentPurpose
+  planId       Int?           @map("plan_id")
+  plan         Plan?          @relation(fields: [planId], references: [id])
+  titleId      BigInt?        @map("title_id")
+  provider     String         @default("flutterwave") @db.VarChar(20)
+  providerRef  String?        @unique @map("provider_ref") @db.VarChar(100)
+  providerTxId String?        @map("provider_txid") @db.VarChar(100)
+  status       PaymentStatus  @default(pending)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  confirmedAt  DateTime?      @map("confirmed_at")
 
   subscriptions Subscription[]
   purchases     Purchase[]

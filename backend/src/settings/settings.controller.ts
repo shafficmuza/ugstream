@@ -50,6 +50,13 @@ const SMS_PROVIDER_KEYS: Record<string, string[]> = {
   bulksms: ['SMS_BULKSMS_TOKEN_ID', 'SMS_BULKSMS_TOKEN_SECRET', 'SMS_BULKSMS_SENDER_ID'],
   africastalking: ['SMS_AT_USERNAME', 'SMS_AT_API_KEY', 'SMS_AT_SENDER_ID', 'SMS_AT_ENV'],
   twilio: ['SMS_TWILIO_ACCOUNT_SID', 'SMS_TWILIO_AUTH_TOKEN', 'SMS_TWILIO_FROM'],
+  // Verify runs on the same account as the plain Twilio gateway above, so it
+  // adds one key rather than repeating those two — the admin screen renders a
+  // field per key listed here, and duplicating them would put two inputs for
+  // the same secret on one form. It needs no 'from' number either: Twilio owns
+  // the sender, and the message wording comes from the Verify service's
+  // friendly name in the Twilio console rather than from this codebase.
+  twilioverify: ['SMS_TWILIO_VERIFY_SERVICE_SID'],
   // The configurable gateway: whatever a new provider needs is expressed as
   // these settings rather than as code, so adding one is a form to fill in
   // rather than a deploy — and never a new mobile build.
