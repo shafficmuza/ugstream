@@ -34,7 +34,7 @@
     "class-validator": "^0.14.1",
     "firebase-admin": "^13.10.0",
     "libphonenumber-js": "^1.13.9",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.2.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "stripe": "^22.3.2"
@@ -44,7 +44,7 @@
     "@nestjs/testing": "^10.4.22",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",
-    "@types/multer": "^1.4.12",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.14.0",
     "jest": "^29.7.0",
     "prisma": "^5.20.0",
@@ -64,5 +64,8 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "testEnvironment": "node"
+  },
+  "overrides": {
+    "multer": "^2.2.0"
   }
 }
