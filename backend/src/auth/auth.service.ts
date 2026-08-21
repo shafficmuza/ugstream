@@ -179,9 +179,11 @@ export class AuthService {
     // written, because it is what the per-number limits count.
     //
     // A refusal from Verify falls through to an ordinary SMS code rather than
-    // failing the request: the plain Twilio gateway still serves +1, and a
-    // Verify outage should cost us the better delivery, not the sign-in.
+    // failing the request: a Verify outage should cost us the better delivery,
+    // not the sign-in.
+    let verifyTried = false;
     if (await this.twilioVerify.shouldUseFor(phone)) {
+      verifyTried = true;
       if (await this.twilioVerify.start(phone)) {
         await this.prisma.otpCode.create({
           data: { phone, codeHash: '', provider: TWILIO_VERIFY_PROVIDER, expiresAt },
@@ -194,11 +196,44 @@ export class AuthService {
     const code = randomOtp();
     const codeHash = await bcrypt.hash(code, 10);
 
-    await this.prisma.otpCode.create({
+    const otp = await this.prisma.otpCode.create({
       data: { phone, codeHash, expiresAt },
     });
 
-    await this.sms.send(phone, `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`);
+    const delivered = await this.sms.send(
+      phone,
+      `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+    );
+
+    // Every cheap gateway refused this number. Verify costs a fee per
+    // verification on top of the message, which is why it is not routed to
+    // first outside +1 — but a code nobody can receive costs a whole sign-in,
+    // and that is the more expensive of the two. So it is the last resort
+    // rather than an unreachable one.
+    //
+    // Skipped when Verify was already asked above and said no: the two paths
+    // would otherwise bill twice for the same refusal.
+    //
+    // The row written a moment ago holds a hash of OUR code, which Twilio has
+    // never seen. Converting it — rather than adding a second row — keeps one
+    // outstanding code per request, so the rate limits still count what they
+    // are meant to and verifyOtp cannot match a stale local hash against a
+    // code Twilio issued.
+    if (!delivered && !verifyTried && (await this.twilioVerify.isConfigured())) {
+      if (await this.twilioVerify.start(phone)) {
+        await this.prisma.otpCode.update({
+          where: { id: otp.id },
+          data: { codeHash: '', provider: TWILIO_VERIFY_PROVIDER },
+        });
+        this.logger.warn(
+          `Every SMS gateway refused ${phone} — the code was issued by Twilio Verify instead.`,
+        );
+      } else {
+        this.logger.error(`Nothing could deliver a code to ${phone}. The user cannot sign in.`);
+      }
+    } else if (!delivered) {
+      this.logger.error(`Nothing could deliver a code to ${phone}. The user cannot sign in.`);
+    }
 
     return { expiresInSeconds: OTP_TTL_MINUTES * 60 };
   }

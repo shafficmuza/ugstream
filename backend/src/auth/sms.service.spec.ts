@@ -352,11 +352,20 @@ describe('SmsService custom gateway', () => {
     expect(errors.join(' ')).toMatch(/failed/i);
   });
 
-  it('does not throw when the gateway is unreachable', async () => {
+  it('reports failure rather than throwing when the gateway is unreachable', async () => {
     const fetchMock = jest.fn(async () => { throw new Error('ECONNREFUSED'); });
     const service = makeCustomService({ SMS_CUSTOM_URL: 'https://g/send' }, fetchMock);
     (service as any).logger = { error: () => {}, warn: () => {} };
-    await expect(service.send('+256700000001', 'code')).resolves.toBeUndefined();
+    // False rather than a throw: the caller escalates to Twilio Verify on a
+    // dead chain, which it can only do if the failure comes back as a value.
+    await expect(service.send('+256700000001', 'code')).resolves.toBe(false);
+  });
+
+  it('reports success when a gateway accepts the message', async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, status: 200, text: async () => 'OK' }));
+    const service = makeCustomService({ SMS_CUSTOM_URL: 'https://g/send' }, fetchMock);
+    (service as any).logger = { error: () => {}, warn: () => {} };
+    await expect(service.send('+256700000001', 'code')).resolves.toBe(true);
   });
 });
 

@@ -252,12 +252,19 @@ export class SmsService {
    * error visible to them and nothing to retry. Paying Twilio's rate for a
    * handful of messages is unambiguously cheaper than an authentication
    * outage.
+   *
+   * Returns whether a gateway took the message. The caller needs that answer:
+   * an exhausted chain is the point at which Twilio Verify is worth its higher
+   * per-verification fee, and it can only make that call if it is told. False
+   * means nothing was sent — including the no-gateway-configured case, where
+   * pretending otherwise would leave a user waiting on a code that was only
+   * ever written to a log.
    */
-  async send(phone: string, message: string): Promise<void> {
+  async send(phone: string, message: string): Promise<boolean> {
     const chain = await this.resolveChain(phone);
     if (chain.length === 0) {
       this.logger.warn(`[SMS STUB — no gateway configured] to ${phone}: ${message}`);
-      return;
+      return false;
     }
 
     for (const [i, provider] of chain.entries()) {
@@ -267,12 +274,13 @@ export class SmsService {
             (provider === 'twilio' ? ' This costs roughly 30x more per message.' : ''),
         );
       }
-      if (await this.sendVia(provider, phone, message)) return;
+      if (await this.sendVia(provider, phone, message)) return true;
     }
 
     this.logger.error(
-      `Every gateway failed for ${phone} (tried ${chain.join(', ')}). The user cannot sign in.`,
+      `Every gateway failed for ${phone} (tried ${chain.join(', ')}).`,
     );
+    return false;
   }
 
   private async sendVia(provider: SmsProvider, phone: string, message: string): Promise<boolean> {

@@ -63,7 +63,9 @@ function makeService(opts: {
 
   const sms = {
     isConfigured: jest.fn(async () => opts.smsReady ?? true),
-    send: jest.fn(async () => undefined),
+    // True: a gateway took it. These tests are about the limits, not delivery,
+    // and a false here would send requestOtp down the Verify escalation path.
+    send: jest.fn(async () => true),
   };
   const config = { get: jest.fn(() => undefined) };
   const activity = { log: jest.fn() };
