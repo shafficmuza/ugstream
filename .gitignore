@@ -20,3 +20,10 @@ yt/
 
 # Store screenshots are large binaries generated from device captures.
 brand/screenshots/
+
+# Claude Code worktrees and session state — local scratch, never source.
+.claude/
+
+# Transfer logs from the R2 copy scripts; regenerated on every run.
+r2-copy.log
+__pycache__/
