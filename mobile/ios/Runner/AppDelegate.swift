@@ -70,6 +70,37 @@ import AVFoundation
       .registrar(forPlugin: "AirPlayRouteView")?
       .register(AirPlayRouteViewFactory(), withId: "airplay_button")
 
+    // Screen/route control, the iOS half of Dart's ScreenAwake.
+    //
+    // AVPlayer disables the idle timer by itself ONLY while it is rendering
+    // video to this device's screen. During AirPlay it renders nothing here,
+    // so the idle timer runs, the phone auto-locks mid-film and playback
+    // stops — the reason viewers were told to turn auto-lock off by hand.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MuzaScreen") {
+      let channel = FlutterMethodChannel(
+        name: "muza/screen",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler { call, result in
+        switch call.method {
+        case "keepAwake":
+          let on = ((call.arguments as? [String: Any])?["on"] as? Bool) ?? false
+          DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = on
+          }
+          result(true)
+        case "isExternalPlayback":
+          // True when audio is leaving over AirPlay. The player uses this to
+          // decide that backgrounding is not a reason to stop: the film is on
+          // the television, and the phone is only the remote control.
+          let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+          result(outputs.contains { $0.portType == .airPlay })
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
+
     // Explicit APNs registration, driven from Dart.
     //
     // Registering in didFinishLaunching is too early — firebase_messaging has

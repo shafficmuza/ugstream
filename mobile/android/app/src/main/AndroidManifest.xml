@@ -3,6 +3,28 @@
          runtime; the app requests it on first launch. Declining is handled. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Chromecast discovery. flutter_chrome_cast ships no manifest of its
+         own, so nothing declared these and the device picker searched
+         forever on a network full of Chromecasts.
+
+         Cast finds devices over mDNS, which is multicast: without
+         CHANGE_WIFI_MULTICAST_STATE the SDK cannot take the multicast lock
+         and Android silently drops the packets. ACCESS_WIFI_STATE and
+         ACCESS_NETWORK_STATE let it tell a usable Wi-Fi network from mobile
+         data, where casting cannot work at all. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Android 13+ gates local-device discovery behind this instead of
+         location. usesPermissionFlags="neverForLocation" is what keeps it
+         from being treated as a location request — both by the runtime and
+         by the Play Console's data-safety review. -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+
     <application
         android:label="Muza Watch"
         android:name="${applicationName}"

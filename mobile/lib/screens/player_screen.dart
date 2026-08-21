@@ -147,21 +147,29 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   /// Leaving the app is a checkpoint, not a pause we can ignore.
   ///
-  /// The app declares no `audio` background mode, so iOS stops playback the
-  /// moment it is backgrounded and may terminate the process without ever
-  /// running dispose(). Everything dispose() was relied on for — saving the
-  /// position, handing back the concurrent-stream slot — was therefore lost
-  /// exactly when the viewer was most likely to come back and resume.
+  /// The process may be terminated while backgrounded without ever running
+  /// dispose(). Everything dispose() was relied on for — saving the position,
+  /// handing back the concurrent-stream slot — would otherwise be lost exactly
+  /// when the viewer was most likely to come back and resume.
+  ///
+  /// Backgrounding no longer means stopping, though. The app now declares the
+  /// `audio` background mode, so iOS keeps AVPlayer alive; and when the film
+  /// is going out over AirPlay, a locked phone is a pocketed remote control,
+  /// not a request to end the film on the television.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      // Actually backgrounded. iOS has stopped the video already; pausing
-      // keeps our own state honest so the button is right on return.
-      _video?.pause();
-      // Android clears the window flag on background anyway; releasing here
-      // keeps our own bookkeeping in step so playback re-arms it on return.
-      ScreenAwake.release();
       _saveProgress();
+      // Ask before stopping. The answer is only ever true on iOS with an
+      // AirPlay route live; everything else keeps the old behaviour of
+      // pausing, so a phone in a pocket is not playing a film to nobody.
+      ScreenAwake.isExternalPlayback().then((external) {
+        if (external) return;
+        _video?.pause();
+        // Android clears the window flag on background anyway; releasing here
+        // keeps our own bookkeeping in step so playback re-arms it on return.
+        ScreenAwake.release();
+      });
     } else if (state == AppLifecycleState.inactive) {
       // Transient: Control Centre, a notification banner, the AirPlay route
       // picker. Worth a checkpoint, but pausing here would stop playback

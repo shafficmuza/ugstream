@@ -49,6 +49,9 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _catalog = CatalogService(context.read<Auth>().api);
     _scroll.addListener(_onScroll);
+    // The Cancel control only exists while the field has focus, so the screen
+    // has to rebuild when that changes.
+    _focus.addListener(() => setState(() {}));
     _load(reset: true);
   }
 
@@ -141,8 +144,41 @@ class _SearchScreenState extends State<SearchScreen> {
   /// to look like and gives the tap target some size on a phone.
   Widget _searchField() {
     final hasText = _ctrl.text.isNotEmpty;
+    // The way out.
+    //
+    // This screen lives in the shell's IndexedStack, so its only exit is the
+    // bottom navigation bar — and the keyboard sits on top of that. A viewer
+    // who tapped the field and then changed their mind was stuck on Search
+    // with no visible way back unless they happened to submit or drag the
+    // grid. Cancel is the iOS convention here and costs nothing on Android.
+    final showCancel = _focus.hasFocus || hasText;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(children: [
+        Expanded(child: _searchBox(hasText)),
+        if (showCancel)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: TextButton(
+              onPressed: () {
+                _focus.unfocus();
+                if (hasText) {
+                  _ctrl.clear();
+                  _query = '';
+                  _load(reset: true);
+                }
+                setState(() {});
+              },
+              child: const Text('Cancel'),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _searchBox(bool hasText) {
+    return Padding(
+      padding: EdgeInsets.zero,
       child: Material(
         color: const Color(0xFF1C1C1E),
         borderRadius: BorderRadius.circular(12),

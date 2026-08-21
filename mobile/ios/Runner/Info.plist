@@ -66,6 +66,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- The google-cast-sdk pod links CoreBluetooth for Cast's guest-mode
+	     discovery. iOS requires this key from any binary that touches
+	     CoreBluetooth — without it the framework is refused at runtime, and
+	     App Review flags the linked framework with no declared purpose. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Muza Watch uses Bluetooth to find nearby Chromecast devices to play videos on.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Muza Watch uses your local network to find Chromecast devices to play videos on.</string>
 	<key>NSBonjourServices</key>
@@ -76,6 +82,11 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<!-- Required for AirPlay. Without it iOS suspends AVPlayer the moment
+		     the app is backgrounded, so locking the phone stops a film that is
+		     playing on the television. The audio session is already .playback
+		     /.moviePlayback (see AppDelegate), which is what this mode needs. -->
+		<string>audio</string>
 	</array>
 </dict>
 </plist>

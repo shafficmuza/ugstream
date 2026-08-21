@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Chromecast button + device picker.
 ///
@@ -33,6 +34,7 @@ class _CastButtonState extends State<CastButton> {
   StreamSubscription? _sessionSub;
   bool _connected = false;
   bool _initialised = false;
+  String? _initError;
 
   @override
   void initState() {
@@ -52,14 +54,26 @@ class _CastButtonState extends State<CastButton> {
           : GoogleCastOptionsAndroid(appId: appId, stopCastingOnAppTerminated: true);
       await GoogleCastContext.instance.setSharedInstanceWithOptions(options);
 
+      // Discovery runs from here rather than from the picker. mDNS browsing
+      // takes seconds, not milliseconds, and starting it only on tap meant the
+      // sheet opened onto an empty list and looked broken even where a
+      // Chromecast was sitting on the same network.
+      //
+      // On iOS this is also what triggers the Local Network permission
+      // prompt — asking while the viewer is looking at a device list they
+      // expected to be populated is the worst moment for it.
+      GoogleCastDiscoveryManager.instance.startDiscovery();
+
       _sessionSub = GoogleCastSessionManager.instance.currentSessionStream.listen((session) {
         final connected = session?.connectionState == GoogleCastConnectState.connected;
         if (mounted && connected != _connected) setState(() => _connected = connected);
       });
       if (mounted) setState(() => _initialised = true);
-    } catch (_) {
-      // Cast unavailable (e.g. no Play Services) — hide the button rather
-      // than break playback.
+    } catch (e) {
+      // Cast genuinely unavailable (no Play Services, SDK missing) — hide the
+      // button rather than break playback, but keep why, so the picker can say
+      // something better than "searching" forever.
+      _initError = '$e';
     }
   }
 
@@ -91,14 +105,7 @@ class _CastButtonState extends State<CastButton> {
                     padding: EdgeInsets.all(16),
                     child: Text('Cast to', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   ),
-                  if (devices.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      child: Text(
-                        'Searching… make sure your Chromecast is on the same Wi-Fi network.',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    ),
+                  if (devices.isEmpty) _emptyState(),
                   for (final d in devices)
                     ListTile(
                       leading: const Icon(Icons.tv),
@@ -149,6 +156,50 @@ class _CastButtonState extends State<CastButton> {
         );
       }
     }
+  }
+
+  /// What to say when discovery has found nothing.
+  ///
+  /// "Searching…" was the only message, and it never stopped being true, so a
+  /// viewer whose phone simply is not allowed to look had no way to tell that
+  /// from a slow network. On iOS an empty list nearly always means the Local
+  /// Network permission was declined — it is asked once, silently fails
+  /// forever after, and can only be restored from Settings, so the sheet has
+  /// to say so and offer the way there.
+  Widget _emptyState() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_initError != null)
+            Text('Casting is unavailable on this device.\n$_initError',
+                style: const TextStyle(color: Colors.white54))
+          else ...[
+            const Text('No devices found yet.',
+                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(
+              Platform.isIOS
+                  ? 'Your Chromecast must be on the same Wi-Fi network, and Muza Watch '
+                    'needs permission to find devices on it.'
+                  : 'Your Chromecast must be on the same Wi-Fi network — casting does '
+                    'not work over mobile data.',
+              style: const TextStyle(color: Colors.white54, fontSize: 13.5, height: 1.45),
+            ),
+            if (Platform.isIOS) ...[
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: () => launchUrl(Uri.parse('app-settings:'),
+                    mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.settings, size: 18),
+                label: const Text('Open Settings → Local Network'),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
   }
 
   @override
