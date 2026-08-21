@@ -93,6 +93,12 @@ export class AuthService {
    * Enforced only when SMS can actually be sent: with no gateway configured
    * nothing costs anything and the caps would only obstruct testing.
    */
+  /** The name to sign a code with — whatever the admin screen calls the app. */
+  private async settingsAppName(): Promise<string | null> {
+    const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
+    return s?.appName?.trim() || null;
+  }
+
   private async enforceOtpLimits(phone: string): Promise<void> {
     const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
     const cooldown = s?.otpCooldownSeconds ?? DEFAULT_OTP_COOLDOWN_SECONDS;
@@ -200,9 +206,21 @@ export class AuthService {
       data: { phone, codeHash, expiresAt },
     });
 
+    // Named sender in the body, not just in the sender ID. Route Mobile and
+    // BulkSMS show a short alphanumeric header that carriers rewrite or drop
+    // on some networks, so an unbranded code can arrive from a bare number
+    // with nothing saying who wants it — indistinguishable from the phishing
+    // it is routinely mistaken for. Twilio Verify already prefixes its own
+    // messages with the service name; this brings the other gateways level.
+    //
+    // Deliberately no "Reply STOP": neither gateway processes inbound
+    // messages, so it would promise an opt-out that goes nowhere. That line
+    // belongs here only if a US 10DLC campaign is ever registered, which
+    // needs an inbound path anyway.
+    const brand = (await this.settingsAppName()) || 'Muza Watch';
     const delivered = await this.sms.send(
       phone,
-      `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+      `${brand}: your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
     );
 
     // Every cheap gateway refused this number. Verify costs a fee per
