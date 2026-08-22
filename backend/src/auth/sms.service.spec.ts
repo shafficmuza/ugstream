@@ -31,18 +31,26 @@ describe('SmsService.routeFor (auto)', () => {
 
   it('sends Ugandan Airtel numbers to RouteMobile', () => {
     // Proven on a handset 2026-08-15. 70/74/75 are Airtel UG.
-    expect(service.routeFor('+256752478186', 'auto')).toBe('routemobile');
-    expect(service.routeFor('+256701234567', 'auto')).toBe('routemobile');
-    expect(service.routeFor('+256742345678', 'auto')).toBe('routemobile');
+    // Airtel's whole UCC allocation, not the three prefixes someone happened
+    // to have to hand: 020 was missing and every subscriber on it silently
+    // took BulkSMS.
+    expect(service.routeFor('+256752478186', 'auto')).toBe('routemobile'); // 075
+    expect(service.routeFor('+256701234567', 'auto')).toBe('routemobile'); // 070
+    expect(service.routeFor('+256742345678', 'auto')).toBe('routemobile'); // 074
+    expect(service.routeFor('+256201234567', 'auto')).toBe('routemobile'); // 020
   });
 
   it('keeps Ugandan MTN numbers OFF RouteMobile', () => {
     // The whole point of the split: RouteMobile answered 1701 (success) for
     // MTN and delivered nothing. Routing MTN there again would break every
     // MTN sign-in with no error anywhere to show for it.
-    expect(service.routeFor('+256775200442', 'auto')).toBe('bulksms');
-    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms');
-    expect(service.routeFor('+256782345678', 'auto')).toBe('bulksms');
+    expect(service.routeFor('+256775200442', 'auto')).toBe('bulksms'); // 077
+    expect(service.routeFor('+256772878614', 'auto')).toBe('bulksms'); // 077
+    expect(service.routeFor('+256782345678', 'auto')).toBe('bulksms'); // 078
+    expect(service.routeFor('+256761234567', 'auto')).toBe('bulksms'); // 076
+    // 079 was Africell's and is MTN's since 2025 — it must not drift onto
+    // RouteMobile just because it is unfamiliar.
+    expect(service.routeFor('+256791234567', 'auto')).toBe('bulksms'); // 079
   });
 
   it('sends Uganda and the rest of the world to BulkSMS', () => {
@@ -51,6 +59,9 @@ describe('SmsService.routeFor (auto)', () => {
     expect(service.routeFor('+447911123456', 'auto')).toBe('bulksms'); // UK
     expect(service.routeFor('+971501234567', 'auto')).toBe('bulksms'); // UAE
     expect(service.routeFor('+27821234567', 'auto')).toBe('bulksms'); // South Africa
+    expect(service.routeFor('+256721234567', 'auto')).toBe('bulksms'); // 072 Lycamobile
+    expect(service.routeFor('+256731962036', 'auto')).toBe('bulksms'); // 073 ex-Africell
+    expect(service.routeFor('+256711234567', 'auto')).toBe('bulksms'); // 071 UTL
   });
 
   it('keeps USA and Canada on Twilio, which BulkSMS does not deliver to', () => {

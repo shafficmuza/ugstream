@@ -46,7 +46,36 @@ const BULKSMS_EXCLUDED_MARKETS: Record<string, string> = {
 };
 
 /**
- * Ugandan Airtel mobile prefixes — the ONLY numbers RouteMobile is trusted with.
+ * Ugandan mobile prefixes by network, as allocated by the UCC.
+ *
+ * Kept as one table rather than a lone Airtel regex because the alternative
+ * is what happened: the list said 70/74/75, Airtel had been allocated 020 as
+ * well, and every 020 subscriber quietly took the wrong gateway. A carrier
+ * that gains a range should be one line here, not an archaeology exercise.
+ *
+ *   Airtel  070 074 075 020
+ *   MTN     076 077 078 079        (079 reallocated from Africell, 2025)
+ *   Lyca    072
+ *   Africell 073                   (exited Uganda in 2021)
+ *   UTL     071
+ *
+ * MTN's 031/039 are deliberately absent: those are fixed-line ranges, and a
+ * code sent to a landline is a code nobody reads.
+ *
+ * ⚠️ Uganda approved Mobile Number Portability in March 2025. Once it is
+ * live, a prefix stops proving which network a number is on and this table
+ * becomes a good guess rather than a fact. The failover chain already covers
+ * a wrong guess — the message simply costs a retry on the next gateway — but
+ * if ported numbers become common the routing needs a real HLR lookup, not a
+ * bigger table.
+ */
+const UG_PREFIXES = {
+  airtel: /^\+256(70|74|75|20)/,
+  mtn: /^\+256(76|77|78|79)/,
+} as const;
+
+/**
+ * The ONLY numbers RouteMobile is trusted with.
  *
  * Tested live against both carriers on 2026-08-15: Airtel arrived, MTN did
  * not. RouteMobile answered `1701` (its success code) for BOTH, so nothing in
@@ -54,9 +83,15 @@ const BULKSMS_EXCLUDED_MARKETS: Record<string, string> = {
  * the worst shape a gateway failure can take — silent — and it is why this is
  * a positive list of what was PROVEN rather than an exclusion list of what
  * failed. MTN stays on BulkSMS until RouteMobile's MTN route is fixed;
- * re-test on a handset before adding 77/78/76/39.
+ * re-test on a handset before adding MTN here.
+ *
+ * The proof was carrier-level, not prefix-level — the handset that received
+ * it was one Airtel SIM, not one Airtel range — so it extends to Airtel's
+ * whole allocation. 020 has never been tested on a handset specifically; if
+ * RouteMobile will not take it, the chain falls through to BulkSMS as it does
+ * for any other refusal.
  */
-const ROUTEMOBILE_AIRTEL_UG = /^\+256(70|74|75)/;
+const ROUTEMOBILE_AIRTEL_UG = UG_PREFIXES.airtel;
 
 /**
  * Warn once BulkSMS credit falls below this.
