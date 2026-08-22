@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/app_version.dart';
 import '../core/auth.dart';
+import 'delete_account_screen.dart';
 import '../core/branding.dart';
 import '../core/store_policy.dart';
 import 'subscribe_screen.dart';
@@ -338,6 +339,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       titleColor: Colors.redAccent,
                       title: 'Log out',
                       onTap: () => context.read<Auth>().logout(),
+                    ),
+                    // Account deletion, required by App Store guideline
+                    // 5.1.1(v) to be reachable from inside the app. It sits
+                    // beside Log out because that is where someone looking to
+                    // leave will look — burying it would satisfy the letter of
+                    // the rule and not the point of it. The screen it opens is
+                    // what makes it hard to do by accident, not its placement.
+                    _Row(
+                      icon: Icons.person_remove_outlined,
+                      iconColor: Colors.redAccent,
+                      titleColor: Colors.redAccent,
+                      title: 'Delete account',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
+                      ),
                     ),
                   ],
                 ),

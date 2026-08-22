@@ -254,6 +254,29 @@ class Auth extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// What deleting this account would cost, for the confirmation screen.
+  Future<Map<String, dynamic>> deletionSummary() async {
+    final res = await api.request('/auth/account/deletion-summary');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  /// Delete this account for good, then land back on the sign-in screen.
+  ///
+  /// Required by App Store guideline 5.1.1(v): deletion has to be reachable
+  /// from inside the app, not only by writing to support.
+  ///
+  /// The push token goes first, exactly as in [logout] — once the tokens are
+  /// cleared the request would be unauthenticated, and a handset that keeps
+  /// the app installed would go on receiving notifications for an account
+  /// that no longer exists.
+  Future<void> deleteAccount() async {
+    await push.onSignedOut();
+    await api.request('/auth/account', method: 'DELETE');
+    await _tokens.clear();
+    _user = null;
+    notifyListeners();
+  }
+
   void _onExpired() {
     _tokens.clear();
     _user = null;

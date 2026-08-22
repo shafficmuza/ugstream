@@ -81,6 +81,12 @@ export class AuthService {
     private readonly twilioVerify: TwilioVerifyService,
   ) {}
 
+  /** The name to sign a code with — whatever the admin screen calls the app. */
+  private async settingsAppName(): Promise<string | null> {
+    const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
+    return s?.appName?.trim() || null;
+  }
+
   /**
    * Per-number OTP limits.
    *
@@ -93,12 +99,6 @@ export class AuthService {
    * Enforced only when SMS can actually be sent: with no gateway configured
    * nothing costs anything and the caps would only obstruct testing.
    */
-  /** The name to sign a code with — whatever the admin screen calls the app. */
-  private async settingsAppName(): Promise<string | null> {
-    const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
-    return s?.appName?.trim() || null;
-  }
-
   private async enforceOtpLimits(phone: string): Promise<void> {
     const s = await this.prisma.appSettings.findUnique({ where: { id: 1 } });
     const cooldown = s?.otpCooldownSeconds ?? DEFAULT_OTP_COOLDOWN_SECONDS;
@@ -153,6 +153,29 @@ export class AuthService {
         tooMany('Daily limit reached for this number. Try again tomorrow or contact support.', 86400);
       }
     }
+  }
+
+  /**
+   * Only an active account may sign in.
+   *
+   * Written as "must be active" rather than "must not be banned": a deleted
+   * account is not banned, and an allow-list of one state cannot be silently
+   * outgrown the way a deny-list can. Neither state is actually reachable here
+   * — a deleted row's phone is a tombstone no real number normalises to, and
+   * its sessions are gone — but the reachable-today set is not the thing worth
+   * encoding.
+   */
+  private assertSignInAllowed(status: string): void {
+    if (status === 'active') return;
+    if (status === 'deleted') {
+      // Said plainly, because the number is free again: whoever is holding it
+      // now can create a new account, and should be told that rather than left
+      // thinking they are locked out of something.
+      throw new UnauthorizedException(
+        'This account was deleted. Sign up again to start a new one.',
+      );
+    }
+    throw new UnauthorizedException('This account has been suspended.');
   }
 
   async requestOtp(rawPhone: string): Promise<{ expiresInSeconds: number }> {
@@ -338,9 +361,7 @@ export class AuthService {
       create: { phone },
     });
 
-    if (user.status === 'banned') {
-      throw new UnauthorizedException('This account has been suspended.');
-    }
+    this.assertSignInAllowed(user.status);
 
     this.activity.log(user.id, 'login', 'Logged in');
     return this.issueSession(user.id, deviceLabel);
@@ -386,9 +407,7 @@ export class AuthService {
   private async signInWithDevBypass(phone: string, deviceLabel?: string) {
     const user = await this.prisma.user.findUnique({ where: { phone } });
     if (!user) throw new UnauthorizedException('Incorrect code.');
-    if (user.status === 'banned') {
-      throw new UnauthorizedException('This account has been suspended.');
-    }
+    this.assertSignInAllowed(user.status);
 
     await this.prisma.otpCode.updateMany({
       where: { phone, consumedAt: null },
@@ -432,9 +451,7 @@ export class AuthService {
       );
     }
 
-    if (user.status === 'banned') {
-      throw new UnauthorizedException('This account has been suspended.');
-    }
+    this.assertSignInAllowed(user.status);
 
     // Any real code still outstanding is retired, matching the ordinary path.
     await this.prisma.otpCode.updateMany({
@@ -479,9 +496,7 @@ export class AuthService {
   async refresh(refreshToken: string) {
     const session = await this.findSessionForToken(refreshToken);
     if (!session) throw new UnauthorizedException('Invalid or expired refresh token.');
-    if (session.user.status === 'banned') {
-      throw new UnauthorizedException('This account has been suspended.');
-    }
+    this.assertSignInAllowed(session.user.status);
 
     // Legacy tokens are matched whole; new ones present only the verifier half
     // for comparison, the lookup half having already served its purpose.

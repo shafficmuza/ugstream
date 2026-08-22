@@ -117,9 +117,12 @@ export default function PrivacyPage() {
       <H2>How long we keep it</H2>
       <P>
         We keep your account and its history for as long as your account exists. Sign-in codes are
-        deleted shortly after they expire. If you ask us to delete your account, we remove your
-        personal information and retain only what we are legally required to keep, such as payment
-        records for tax and accounting purposes.
+        deleted shortly after they expire. When you delete your account — from{' '}
+        <strong>Profile → Delete account</strong> in the app, or by asking us — it happens
+        immediately and without a waiting period: your phone number, profile, watch history, saved
+        list and signed-in devices are all removed, and your number is released so it can be used
+        for a new account later. We retain only what we are legally required to keep, such as
+        payment records for tax and accounting purposes, and those no longer identify you.
       </P>
 
       <H2>Security</H2>
@@ -141,7 +144,9 @@ export default function PrivacyPage() {
           or ask us for a copy of what we hold.
         </li>
         <li>
-          <strong>Deletion</strong> — email us and we will delete your account.
+          <strong>Deletion</strong> — delete your account yourself, at any time, from{' '}
+          <strong>Profile → Delete account</strong> in the app. It takes effect immediately and
+          cannot be undone. You can also email us if you would rather we did it.
         </li>
         <li>
           <strong>Notifications</strong> — turn push notifications off in your device settings.
@@ -188,8 +193,9 @@ export default function PrivacyPage() {
         A child cannot make a purchase on their own.
       </P>
       <P>
-        <strong>Parents:</strong> to see or delete everything held for your account, or to close it
-        entirely, email us at{' '}
+        <strong>Parents:</strong> an account can be closed at any time from{' '}
+        <strong>Profile → Delete account</strong> in the app. To see everything held for it, or if
+        you would rather we closed it for you, email us at{' '}
         <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a> from the address on the account or
         contact us on the number below.
       </P>

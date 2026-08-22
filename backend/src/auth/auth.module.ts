@@ -6,11 +6,20 @@ import { SmsService } from './sms.service';
 import { MasterCodeService } from './master-code.service';
 import { DevBypassService } from './dev-bypass.service';
 import { PinService } from './pin.service';
+import { AccountService } from './account.service';
 import { TwilioVerifyService } from './twilio-verify.service';
 
 @Module({
   controllers: [AuthController, MeController],
-  providers: [AuthService, SmsService, TwilioVerifyService, MasterCodeService, DevBypassService, PinService],
+  providers: [
+    AuthService,
+    SmsService,
+    TwilioVerifyService,
+    MasterCodeService,
+    DevBypassService,
+    PinService,
+    AccountService,
+  ],
   exports: [AuthService, MasterCodeService, DevBypassService, PinService],
 })
 export class AuthModule {}

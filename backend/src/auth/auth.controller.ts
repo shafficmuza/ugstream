@@ -18,6 +18,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PinLoginDto, SetPinDto, SignInMethodDto } from './dto/pin.dto';
 import { PinService } from './pin.service';
+import { AccountService } from './account.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, AuthContext } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -114,6 +115,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
     private readonly pins: PinService,
+    private readonly accounts: AccountService,
   ) {}
 
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
@@ -172,6 +174,45 @@ export class AuthController {
   @Delete('pin')
   clearPin(@CurrentUser() auth: AuthContext) {
     return this.pins.clear(auth.userId);
+  }
+
+  /**
+   * What deleting this account would destroy — shown on the confirm screen.
+   *
+   * Separate from the delete itself so the app can state consequences before
+   * asking, rather than after. Chiefly: an active subscription is not refunded
+   * and a mobile-money arrangement is not cancelled at the telco.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('account/deletion-summary')
+  deletionSummary(@CurrentUser() auth: AuthContext) {
+    return this.accounts.deletionSummary(auth.userId);
+  }
+
+  /**
+   * Delete the caller's own account. Irreversible and immediate.
+   *
+   * Required by App Store guideline 5.1.1(v): deletion has to be reachable
+   * from inside the app, and a support email does not satisfy it.
+   *
+   * Throttled hard. Not against abuse of one's own account — that is the
+   * holder's right — but because the endpoint takes a session token and does
+   * something unrecoverable, and a leaked token should not be able to walk a
+   * range of them.
+   */
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
+  @UseGuards(JwtAuthGuard)
+  @Delete('account')
+  async deleteAccount(@CurrentUser() auth: AuthContext, @Res({ passthrough: true }) res: Response) {
+    await this.accounts.deleteOwn(auth.userId);
+    // Same cookies logout clears, and for the same reason plus one: these
+    // outlive the row they pointed at, so leaving them would send the browser
+    // back to a sign-in screen still carrying a token for an account that no
+    // longer exists — and the audience cookie would go on selecting a
+    // catalogue for a viewer who has gone.
+    res.clearCookie(REFRESH_COOKIE, { path: '/' });
+    res.clearCookie(AUDIENCE_COOKIE, { path: '/' });
+    return { deleted: true };
   }
 
   @Post('refresh')

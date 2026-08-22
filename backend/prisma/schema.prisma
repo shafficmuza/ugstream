@@ -192,6 +192,12 @@ enum UserRole {
 enum UserStatus {
   active
   banned
+  // Deleted at the account holder's own request (App Store guideline
+  // 5.1.1(v)). The row survives because payments, subscriptions and purchases
+  // reference it under RESTRICT and are financial records we must keep — but
+  // everything identifying is gone, so what remains is an anonymous ledger
+  // entry rather than a person. See AccountService.deleteOwn.
+  deleted
 }
 
 model User {
@@ -231,6 +237,11 @@ model User {
   pinSetAt       DateTime?  @map("pin_set_at")
   pinFailures    Int        @default(0) @map("pin_failures")
   pinLockedUntil DateTime?  @map("pin_locked_until")
+  // When the holder deleted this account themselves. Null for every live
+  // account. Kept as proof of *when* the request was honoured — the one thing
+  // anonymising the row would otherwise destroy, and the thing a regulator or
+  // App Review would ask for.
+  deletedAt      DateTime?  @map("deleted_at")
 
   sessions      Session[]
   payments      Payment[]

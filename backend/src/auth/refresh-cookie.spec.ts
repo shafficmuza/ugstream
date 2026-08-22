@@ -29,7 +29,14 @@ describe('readRefreshCookie', () => {
 
 describe('AuthController.refresh source of the token', () => {
   function makeController(refreshMock: jest.Mock) {
-    return new AuthController({ refresh: refreshMock } as any, {} as any, {} as any);
+    // Four collaborators now: auth, prisma, pins, accounts. Only `refresh`
+    // is exercised here; the rest exist so the constructor is satisfiable.
+    return new AuthController(
+      { refresh: refreshMock } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
   }
   const res = () => ({ cookie: jest.fn(), clearCookie: jest.fn() }) as any;
 
